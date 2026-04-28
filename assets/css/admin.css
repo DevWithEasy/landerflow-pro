@@ -1,0 +1,196 @@
+.wp-dev-utility-wrap {
+    max-width: 1200px;
+    margin: 20px auto;
+}
+
+.wp-dev-utility-dashboard {
+    display: grid;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.dashboard-section {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.dashboard-section h2 {
+    margin-top: 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
+    color: #23282d;
+}
+
+.progress-container {
+    margin: 20px 0;
+}
+
+.progress-bar {
+    position: relative;
+    height: 30px;
+    background: #f0f0f1;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00a0d2, #00bcd4);
+    width: 0;
+    transition: width 0.5s ease;
+    border-radius: 3px;
+}
+
+.progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #23282d;
+    font-weight: bold;
+    text-shadow: 0 0 2px rgba(255,255,255,0.8);
+}
+
+.plugins-status-container {
+    margin: 20px 0;
+}
+
+.plugin-status-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    margin-bottom: 10px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+}
+
+.plugin-status-item.completed {
+    background: #f0fdf4;
+    border-color: #86efac;
+}
+
+.plugin-status-item.error {
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+
+.plugin-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.plugin-name {
+    font-weight: 600;
+    color: #23282d;
+    font-size: 14px;
+}
+
+.plugin-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.status-text {
+    font-size: 13px;
+    color: #666;
+}
+
+.status-icon {
+    font-size: 20px;
+}
+
+.status-icon .dashicons-yes {
+    color: #46b450;
+}
+
+.status-icon .dashicons-no {
+    color: #dc3232;
+}
+
+.status-icon .dashicons-update {
+    color: #ffb900;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.action-buttons {
+    margin-top: 20px;
+    text-align: center;
+}
+
+#start-installation {
+    padding: 10px 30px;
+    font-size: 16px;
+    height: auto;
+}
+
+#start-installation:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.coming-soon {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 4px;
+    color: #fff;
+}
+
+.coming-soon-content {
+    text-align: center;
+    padding: 40px;
+}
+
+.coming-soon-content .dashicons {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    margin-bottom: 20px;
+}
+
+.coming-soon-content h3 {
+    font-size: 24px;
+    margin: 10px 0;
+}
+
+.coming-soon-content p {
+    font-size: 16px;
+    opacity: 0.9;
+}
+
+/* Auto-install animation */
+.auto-install .plugins-status-container {
+    animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .plugin-status-item {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .action-buttons {
+        text-align: left;
+    }
+}
