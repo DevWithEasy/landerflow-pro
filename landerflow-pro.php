@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: LanderFlow Pro
- * Plugin URI: https://wpexpertbd.shop
- * Description: Automated plugin installation and activation utility for WooCommerce, Elementor, and CartFlows
+ * Plugin URI: https://github.com/DevWithEasy/landerflow-pro
+ * Description: Professional landing page setup utility - Automatically installs and activates WooCommerce, Elementor, and CartFlows for seamless landing page creation
  * Version: 1.0.0
  * Author: Robiul Awal
  * Author URI: https://github.com/DevWithEasy
@@ -16,14 +16,14 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('WP_DEV_UTILITY_VERSION', '1.0.0');
-define('WP_DEV_UTILITY_PLUGIN_DIR', plugin_dir_path(__FILE__));
-define('WP_DEV_UTILITY_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('LANDERFLOW_PRO_VERSION', '1.0.0');
+define('LANDERFLOW_PRO_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('LANDERFLOW_PRO_PLUGIN_URL', plugin_dir_url(__FILE__));
 
 // Initialize the plugin
-if (!class_exists('WP_Dev_Utility')) {
+if (!class_exists('LanderFlow_Pro')) {
     
-    class WP_Dev_Utility {
+    class LanderFlow_Pro {
         
         private static $instance = null;
         private $required_plugins = array();
@@ -56,18 +56,18 @@ if (!class_exists('WP_Dev_Utility')) {
             
             add_action('admin_menu', array($this, 'add_admin_menu'));
             add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
-            add_action('wp_ajax_wp_dev_install_plugin', array($this, 'ajax_install_plugin'));
-            add_action('wp_ajax_wp_dev_activate_plugin', array($this, 'ajax_activate_plugin'));
-            add_action('wp_ajax_wp_dev_get_plugin_status', array($this, 'ajax_get_plugin_status'));
+            add_action('wp_ajax_landerflow_install_plugin', array($this, 'ajax_install_plugin'));
+            add_action('wp_ajax_landerflow_activate_plugin', array($this, 'ajax_activate_plugin'));
+            add_action('wp_ajax_landerflow_get_plugin_status', array($this, 'ajax_get_plugin_status'));
             add_action('activated_plugin', array($this, 'check_auto_trigger'));
         }
         
         public function add_admin_menu() {
             add_menu_page(
-                'WP Developer Utility',
-                'Dev Utility',
+                'LanderFlow Pro',
+                'LanderFlow Pro',
                 'manage_options',
-                'wp-dev-utility',
+                'landerflow-pro',
                 array($this, 'render_admin_page'),
                 'dashicons-admin-tools',
                 100
@@ -75,45 +75,49 @@ if (!class_exists('WP_Dev_Utility')) {
         }
         
         public function enqueue_admin_scripts($hook) {
-            if ('toplevel_page_wp-dev-utility' !== $hook) {
+            if ('toplevel_page_landerflow-pro' !== $hook) {
                 return;
             }
             
             wp_enqueue_style(
-                'wp-dev-utility-admin',
-                WP_DEV_UTILITY_PLUGIN_URL . 'assets/css/admin.css',
+                'landerflow-pro-admin',
+                LANDERFLOW_PRO_PLUGIN_URL . 'assets/css/admin.css',
                 array(),
-                WP_DEV_UTILITY_VERSION
+                LANDERFLOW_PRO_VERSION
             );
             
             wp_enqueue_script(
-                'wp-dev-utility-admin',
-                WP_DEV_UTILITY_PLUGIN_URL . 'assets/js/admin.js',
+                'landerflow-pro-admin',
+                LANDERFLOW_PRO_PLUGIN_URL . 'assets/js/admin.js',
                 array('jquery'),
-                WP_DEV_UTILITY_VERSION,
+                LANDERFLOW_PRO_VERSION,
                 true
             );
             
-            wp_localize_script('wp-dev-utility-admin', 'wpDevUtility', array(
+            wp_localize_script('landerflow-pro-admin', 'landerflowPro', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
-                'nonce' => wp_create_nonce('wp_dev_utility_nonce'),
+                'nonce' => wp_create_nonce('landerflow_pro_nonce'),
                 'plugins' => $this->required_plugins,
-                'installing_text' => __('Installing...', 'wp-dev-utility'),
-                'activating_text' => __('Activating...', 'wp-dev-utility'),
-                'ready_text' => __('Ready', 'wp-dev-utility'),
-                'error_text' => __('Error', 'wp-dev-utility')
+                'installing_text' => __('Installing...', 'landerflow-pro'),
+                'activating_text' => __('Activating...', 'landerflow-pro'),
+                'ready_text' => __('Ready', 'landerflow-pro'),
+                'error_text' => __('Error', 'landerflow-pro'),
+                'checking_text' => __('Checking...', 'landerflow-pro'),
+                'completed_text' => __('Completed!', 'landerflow-pro'),
+                'activation_failed_text' => __('Activation Failed', 'landerflow-pro'),
+                'installation_failed_text' => __('Installation Failed', 'landerflow-pro')
             ));
         }
         
         public function check_auto_trigger($plugin) {
             if (plugin_basename(__FILE__) === $plugin) {
                 // Store auto-trigger flag
-                update_option('wp_dev_utility_auto_trigger', true);
+                update_option('landerflow_pro_auto_trigger', true);
             }
         }
         
         public function ajax_install_plugin() {
-            check_ajax_referer('wp_dev_utility_nonce', 'nonce');
+            check_ajax_referer('landerflow_pro_nonce', 'nonce');
             
             if (!current_user_can('install_plugins')) {
                 wp_send_json_error('Insufficient permissions');
@@ -188,7 +192,7 @@ if (!class_exists('WP_Dev_Utility')) {
         }
         
         public function ajax_activate_plugin() {
-            check_ajax_referer('wp_dev_utility_nonce', 'nonce');
+            check_ajax_referer('landerflow_pro_nonce', 'nonce');
             
             if (!current_user_can('activate_plugins')) {
                 wp_send_json_error('Insufficient permissions');
@@ -224,7 +228,7 @@ if (!class_exists('WP_Dev_Utility')) {
         }
         
         public function ajax_get_plugin_status() {
-            check_ajax_referer('wp_dev_utility_nonce', 'nonce');
+            check_ajax_referer('landerflow_pro_nonce', 'nonce');
             
             $status = array();
             
@@ -247,23 +251,32 @@ if (!class_exists('WP_Dev_Utility')) {
         }
         
         public function render_admin_page() {
-            $auto_trigger = get_option('wp_dev_utility_auto_trigger', false);
+            $auto_trigger = get_option('landerflow_pro_auto_trigger', false);
             
             if ($auto_trigger) {
-                delete_option('wp_dev_utility_auto_trigger');
+                delete_option('landerflow_pro_auto_trigger');
                 $auto_trigger_class = 'auto-install';
             } else {
                 $auto_trigger_class = '';
             }
             ?>
-            <div class="wrap wp-dev-utility-wrap <?php echo $auto_trigger_class; ?>">
-                <h1><?php _e('WP Developer Utility', 'wp-dev-utility'); ?></h1>
+            <div class="wrap landerflow-pro-wrap <?php echo $auto_trigger_class; ?>">
+                <div class="landerflow-header">
+                    <h1>
+                        <span class="dashicons dashicons-superhero"></span>
+                        <?php _e('LanderFlow Pro', 'landerflow-pro'); ?>
+                    </h1>
+                    <p class="landerflow-subtitle"><?php _e('Professional Landing Page Setup Utility', 'landerflow-pro'); ?></p>
+                </div>
                 
-                <div class="wp-dev-utility-dashboard">
+                <div class="landerflow-pro-dashboard">
                     <div class="dashboard-section">
-                        <h2><?php _e('Plugin Installation Status', 'wp-dev-utility'); ?></h2>
+                        <div class="section-header">
+                            <h2><?php _e('🚀 Plugin Installation Status', 'landerflow-pro'); ?></h2>
+                            <p><?php _e('Installing and activating required plugins for optimal landing page performance', 'landerflow-pro'); ?></p>
+                        </div>
                         
-                        <div id="wp-dev-utility-progress">
+                        <div id="landerflow-progress">
                             <div class="progress-container">
                                 <div class="progress-bar" id="overall-progress">
                                     <div class="progress-fill"></div>
@@ -276,11 +289,19 @@ if (!class_exists('WP_Dev_Utility')) {
                                     <div class="plugin-status-item" data-plugin="<?php echo esc_attr($slug); ?>" 
                                          data-plugin-name="<?php echo esc_attr($plugin['name']); ?>">
                                         <div class="plugin-info">
-                                            <span class="plugin-name"><?php echo esc_html($plugin['name']); ?></span>
+                                            <span class="plugin-icon">
+                                                <?php echo $this->get_plugin_icon($slug); ?>
+                                            </span>
+                                            <div class="plugin-details">
+                                                <span class="plugin-name"><?php echo esc_html($plugin['name']); ?></span>
+                                                <span class="plugin-description">
+                                                    <?php echo $this->get_plugin_description($slug); ?>
+                                                </span>
+                                            </div>
                                         </div>
                                         <div class="plugin-status">
                                             <span class="status-text" id="status-<?php echo esc_attr($slug); ?>">
-                                                <?php _e('Checking...', 'wp-dev-utility'); ?>
+                                                <?php _e('Checking...', 'landerflow-pro'); ?>
                                             </span>
                                             <span class="status-icon" id="icon-<?php echo esc_attr($slug); ?>"></span>
                                         </div>
@@ -290,19 +311,41 @@ if (!class_exists('WP_Dev_Utility')) {
                         </div>
                         
                         <div class="action-buttons">
-                            <button type="button" id="start-installation" class="button button-primary">
-                                <?php _e('Install & Activate All Plugins', 'wp-dev-utility'); ?>
+                            <button type="button" id="start-installation" class="button button-primary button-hero">
+                                <span class="dashicons dashicons-download"></span>
+                                <?php _e('Install & Activate All Plugins', 'landerflow-pro'); ?>
+                            </button>
+                            <button type="button" id="check-status" class="button button-secondary">
+                                <span class="dashicons dashicons-update"></span>
+                                <?php _e('Refresh Status', 'landerflow-pro'); ?>
                             </button>
                         </div>
                     </div>
                     
-                    <div class="dashboard-section">
-                        <h2><?php _e('Template Importer', 'wp-dev-utility'); ?></h2>
+                    <div class="dashboard-section template-importer-section">
+                        <div class="section-header">
+                            <h2><?php _e('🎨 Template Importer', 'landerflow-pro'); ?></h2>
+                            <p><?php _e('Import professional landing page templates with one click', 'landerflow-pro'); ?></p>
+                        </div>
                         <div class="coming-soon">
                             <div class="coming-soon-content">
-                                <span class="dashicons dashicons-clock"></span>
-                                <h3><?php _e('Coming Soon', 'wp-dev-utility'); ?></h3>
-                                <p><?php _e('The Template Importer feature is currently under development. Stay tuned for updates!', 'wp-dev-utility'); ?></p>
+                                <span class="dashicons dashicons-layout"></span>
+                                <h3><?php _e('Coming Soon', 'landerflow-pro'); ?></h3>
+                                <p><?php _e('We\'re crafting beautiful landing page templates for you. This feature will be available in the next update!', 'landerflow-pro'); ?></p>
+                                <div class="feature-list">
+                                    <span class="feature-item">
+                                        <span class="dashicons dashicons-yes"></span>
+                                        Pre-built Landing Pages
+                                    </span>
+                                    <span class="feature-item">
+                                        <span class="dashicons dashicons-yes"></span>
+                                        One-Click Import
+                                    </span>
+                                    <span class="feature-item">
+                                        <span class="dashicons dashicons-yes"></span>
+                                        Mobile Responsive
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -310,8 +353,26 @@ if (!class_exists('WP_Dev_Utility')) {
             </div>
             <?php
         }
+        
+        private function get_plugin_icon($slug) {
+            $icons = array(
+                'woocommerce' => '🛒',
+                'elementor' => '⚡',
+                'cartflows' => '🛍️'
+            );
+            return isset($icons[$slug]) ? $icons[$slug] : '📦';
+        }
+        
+        private function get_plugin_description($slug) {
+            $descriptions = array(
+                'woocommerce' => 'E-commerce platform',
+                'elementor' => 'Page builder',
+                'cartflows' => 'Sales funnel builder'
+            );
+            return isset($descriptions[$slug]) ? $descriptions[$slug] : '';
+        }
     }
     
     // Initialize the plugin
-    WP_Dev_Utility::get_instance();
+    LanderFlow_Pro::get_instance();
 }
