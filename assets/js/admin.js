@@ -1,300 +1,160 @@
-/**
- * LanderFlow Pro - Admin JavaScript
- * Handles AJAX plugin installation with live progress tracking
- */
-jQuery(document).ready(function($) {
-    'use strict';
-    
-    const LanderFlowPro = {
-        isProcessing: false,
-        
-        init: function() {
-            this.cacheElements();
-            this.bindEvents();
-            this.checkInitialStatus();
-        },
-        
-        cacheElements: function() {
-            this.startButton = $('#start-installation');
-            this.checkStatusButton = $('#check-status');
-            this.pluginsContainer = $('#plugins-status');
-            this.progressFill = $('.progress-fill');
-            this.progressText = $('.progress-text');
-            this.pluginItems = $('.plugin-status-item');
-        },
-        
-        bindEvents: function() {
-            this.startButton.on('click', () => this.handleInstallation());
-            this.checkStatusButton.on('click', () => this.updateAllStatuses());
-        },
-        
-        checkInitialStatus: function() {
-            // Check if auto-trigger is set
-            const autoTrigger = $('.landerflow-pro-wrap').hasClass('auto-install');
-            
-            if (autoTrigger) {
-                setTimeout(() => {
-                    this.handleInstallation();
-                }, 1500);
-            } else {
-                this.updateAllStatuses();
-            }
-        },
-        
-        updateAllStatuses: function() {
-            this.showLoadingState();
-            
-            $.ajax({
-                url: landerflowPro.ajax_url,
-                type: 'POST',
-                data: {
-                    action: 'landerflow_get_plugin_status',
-                    nonce: landerflowPro.nonce
-                },
-                success: (response) => {
-                    if (response.success) {
-                        Object.keys(response.data).forEach((slug) => {
-                            this.updatePluginUI(slug, response.data[slug]);
-                        });
-                    }
-                },
-                complete: () => {
-                    this.hideLoadingState();
-                }
+jQuery(function($) {
+    const lf = {
+        busy: false,
+        coreTotal: lfData.core.length,
+
+        init() {
+            $('#lf-start').on('click', () => this.runBulk());
+            $('#lf-refresh').on('click', () => this.refreshStatus());
+            $('#lf-toggle').on('click', () => {
+                const $checks = $('input[name="lf_plugins[]"]:not(:disabled)');
+                const allChecked = $checks.filter(':checked').length === $checks.length;
+                $checks.prop('checked', !allChecked);
             });
+            $('.lf-single-action').on('click', (e) => {
+                e.preventDefault();
+                this.handleSingle($(e.target).closest('.lf-single-action'));
+            });
+            $('.lf-wrap.auto-run').length && setTimeout(() => this.runBulk(), 1000);
+            this.refreshStatus();
         },
-        
-        handleInstallation: function() {
-            if (this.isProcessing) {
-                return;
-            }
+
+        handleSingle($btn) {
+            if ($btn.is(':disabled') || this.busy) return;
+            const slug = $btn.data('slug');
+            $btn.prop('disabled', true).addClass('loading').text('Processing...');
             
-            this.isProcessing = true;
-            this.startButton.prop('disabled', true);
-            this.checkStatusButton.prop('disabled', true);
-            this.resetProgress();
-            
-            const plugins = Object.keys(landerflowPro.plugins);
-            this.processPluginsSequentially(plugins, 0);
+            const needsInstall = $btn.hasClass('btn-install');
+            const process = (action) => {
+                this.ajax(action, {slug})
+                    .then(() => {
+                        if (needsInstall) process('lf_activate');
+                        else this.updateUIAfterAction(slug);
+                    })
+                    .catch(err => this.updateSingleUI(slug, 'error', err.message || 'Failed'));
+            };
+            if (needsInstall) process('lf_install');
+            else process('lf_activate');
         },
-        
-        processPluginsSequentially: function(plugins, index) {
-            if (index >= plugins.length) {
-                this.completeInstallation();
-                return;
-            }
-            
-            const pluginSlug = plugins[index];
-            const pluginName = landerflowPro.plugins[pluginSlug].name;
-            const progress = Math.round((index / plugins.length) * 100);
-            
-            this.updateProgress(progress, `Processing: ${pluginName}...`);
-            this.updatePluginStatus(pluginSlug, 'installing', landerflowPro.installing_text);
-            
-            // Install plugin first
-            this.installPlugin(pluginSlug)
-                .then(() => {
-                    this.updatePluginStatus(pluginSlug, 'activating', landerflowPro.activating_text);
-                    return this.activatePlugin(pluginSlug);
-                })
-                .then(() => {
-                    this.updatePluginUI(pluginSlug, {
-                        installed: true,
-                        active: true,
-                        name: pluginName
+
+        runBulk() {
+            const selected = [];
+            $('input[name="lf_plugins[]"]:checked').each(function() {
+                const $item = $(this).closest('.lf-item');
+                if (!$item.find('.lf-status').hasClass('st-active')) selected.push($(this).val());
+            });
+
+            if (selected.length === 0) return this.notice('All selected plugins are already active.', 'info');
+            if (this.busy || !confirm(`Process ${selected.length} plugin(s)?`)) return;
+
+            this.busy = true;
+            $('.lf-btn, .lf-single-action, input[type="checkbox"]').prop('disabled', true);
+            this.progressText(`Starting...`);
+            this.processBulk(selected, 0);
+        },
+
+        processBulk(list, i) {
+            if (i >= list.length) return this.finish();
+            const slug = list[i];
+            const $item = $(`.lf-item[data-slug="${slug}"]`);
+            const needsInstall = $item.find('.lf-status').hasClass('st-missing');
+
+            const doAction = (action) => {
+                this.ajax(action, {slug})
+                    .then(() => {
+                        if (needsInstall) doAction('lf_activate');
+                        else this.nextBulk(i, list);
+                    })
+                    .catch(err => {
+                        this.updateSingleUI(slug, 'error', err.message || 'Failed');
+                        this.nextBulk(i, list);
                     });
-                    
-                    const newProgress = Math.round(((index + 1) / plugins.length) * 100);
-                    this.updateProgress(newProgress, `Completed: ${pluginName}`);
-                    
-                    // Process next plugin after short delay
-                    setTimeout(() => {
-                        this.processPluginsSequentially(plugins, index + 1);
-                    }, 800);
-                })
-                .catch((error) => {
-                    console.error(`Failed to process ${pluginName}:`, error);
-                    
-                    this.updatePluginUI(pluginSlug, {
-                        installed: false,
-                        active: false,
-                        name: pluginName,
-                        error: error.message || landerflowPro.installation_failed_text
-                    });
-                    
-                    // Continue with next plugin even if current fails
-                    setTimeout(() => {
-                        this.processPluginsSequentially(plugins, index + 1);
-                    }, 800);
-                });
+            };
+            if (needsInstall) doAction('lf_install');
+            else doAction('lf_activate');
         },
-        
-        installPlugin: function(pluginSlug) {
-            return new Promise((resolve, reject) => {
-                $.ajax({
-                    url: landerflowPro.ajax_url,
-                    type: 'POST',
-                    data: {
-                        action: 'landerflow_install_plugin',
-                        plugin_slug: pluginSlug,
-                        nonce: landerflowPro.nonce
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            resolve(response.data);
-                        } else {
-                            reject(new Error(response.data || 'Installation failed'));
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        reject(new Error('Network error: ' + error));
-                    }
+
+        nextBulk(i, list) {
+            const slug = list[i];
+            this.updateSingleUI(slug, 'active');
+            this.updateProgress(); // Always update core progress after any action
+            setTimeout(() => this.processBulk(list, i + 1), 400);
+        },
+
+        refreshStatus() {
+            this.ajax('lf_status', {}).then(data => {
+                $.each(data, (slug, s) => {
+                    const state = s.installed && s.active ? 'active' : s.installed ? 'inactive' : 'missing';
+                    this.updateSingleUI(slug, state);
                 });
+                this.updateProgress();
             });
         },
-        
-        activatePlugin: function(pluginSlug) {
-            return new Promise((resolve, reject) => {
-                $.ajax({
-                    url: landerflowPro.ajax_url,
-                    type: 'POST',
-                    data: {
-                        action: 'landerflow_activate_plugin',
-                        plugin_slug: pluginSlug,
-                        nonce: landerflowPro.nonce
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            resolve(response.data);
-                        } else {
-                            reject(new Error(response.data || 'Activation failed'));
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        reject(new Error('Network error: ' + error));
-                    }
-                });
+
+        updateProgress() {
+            let coreDone = 0;
+            lfData.core.forEach(slug => {
+                if ($(`.lf-item[data-slug="${slug}"] .lf-status`).hasClass('st-active')) coreDone++;
             });
+            const pct = Math.round((coreDone / this.coreTotal) * 100);
+            $('#lf-fill').css('width', pct + '%').css('background', pct >= 100 ? '#2e7d32' : '#0073aa');
+            this.progressText(pct >= 100 ? 'Core Setup Complete! 🎉' : `${coreDone}/${this.coreTotal} Core Plugins Ready`);
         },
-        
-        updatePluginStatus: function(pluginSlug, status, text) {
-            const statusText = $(`#status-${pluginSlug}`);
-            const statusIcon = $(`#icon-${pluginSlug}`);
-            const pluginItem = $(`.plugin-status-item[data-plugin="${pluginSlug}"]`);
-            
-            statusText.text(text);
-            
-            if (status === 'installing' || status === 'activating') {
-                statusIcon.html('<span class="dashicons dashicons-update"></span>');
-                pluginItem.removeClass('completed error');
-            }
+
+        updateUIAfterAction(slug) {
+            this.updateSingleUI(slug, 'active');
+            this.updateProgress();
+            this.notice('✓ Plugin processed!', 'success');
         },
-        
-        updatePluginUI: function(pluginSlug, status) {
-            const statusText = $(`#status-${pluginSlug}`);
-            const statusIcon = $(`#icon-${pluginSlug}`);
-            const pluginItem = $(`.plugin-status-item[data-plugin="${pluginSlug}"]`);
-            
-            pluginItem.removeClass('completed error');
-            
-            if (status.installed && status.active) {
-                statusText.text(landerflowPro.ready_text);
-                statusIcon.html('<span class="dashicons dashicons-yes"></span>');
-                pluginItem.addClass('completed');
-                
-                // Add success animation
-                pluginItem.css('animation', 'none');
-                pluginItem[0].offsetHeight; // Trigger reflow
-                pluginItem.css('animation', 'pulse 0.5s ease');
-                
-            } else if (status.error) {
-                statusText.text(status.error);
-                statusIcon.html('<span class="dashicons dashicons-no"></span>');
-                pluginItem.addClass('error');
-                
-            } else if (status.installed && !status.active) {
-                statusText.text(landerflowPro.activation_failed_text);
-                statusIcon.html('<span class="dashicons dashicons-warning"></span>');
-                
+
+        updateSingleUI(slug, state, errMsg = '') {
+            const $item = $(`.lf-item[data-slug="${slug}"]`);
+            if (!$item.length) return;
+            const $btn = $item.find('.lf-single-action');
+            const $status = $item.find('.lf-status');
+            const $check = $item.find('input[type="checkbox"]');
+
+            $status.removeClass('st-active st-inactive st-missing');
+            $btn.removeClass('btn-install btn-activate btn-done loading');
+
+            if (state === 'active') {
+                $status.addClass('st-active').text('✓ Active');
+                $btn.addClass('btn-done').text('✓ Active').prop('disabled', true);
+                $check.prop('checked', false).prop('disabled', true);
+            } else if (state === 'inactive') {
+                $status.addClass('st-inactive').text('⚡ Inactive');
+                $btn.addClass('btn-activate').text('Activate').prop('disabled', false);
+                $check.prop('checked', true).prop('disabled', false);
             } else {
-                statusText.text(landerflowPro.error_text);
-                statusIcon.html('<span class="dashicons dashicons-no"></span>');
-                pluginItem.addClass('error');
+                $status.addClass('st-missing').text(state === 'error' ? '✗ Error' : '⬜ Missing');
+                $btn.addClass('btn-install').text(errMsg || 'Install').prop('disabled', false);
+                $check.prop('checked', true).prop('disabled', false);
+                if (state === 'error' && errMsg) this.notice(errMsg, 'error');
             }
         },
-        
-        updateProgress: function(percentage, text) {
-            this.progressFill.css('width', percentage + '%');
-            this.progressText.text(text || percentage + '%');
+
+        progressText(txt) { $('#lf-progress-text').text(txt); },
+
+        finish() {
+            this.busy = false;
+            $('.lf-btn, .lf-single-action, input[type="checkbox"]').prop('disabled', false);
+            this.updateProgress();
+            if ($('#lf-fill').css('width') === '100%') this.notice('🎉 All core plugins ready!', 'success');
+            else this.notice('✓ Selection processed.', 'success');
         },
-        
-        resetProgress: function() {
-            this.updateProgress(0, '0%');
-            this.pluginItems.removeClass('completed error');
-            
-            this.pluginItems.each(function() {
-                const slug = $(this).data('plugin');
-                $(`#status-${slug}`).text(landerflowPro.checking_text);
-                $(`#icon-${slug}`).html('');
+
+        ajax(action, data) {
+            return new Promise((res, rej) => {
+                $.post(lfData.ajax, {action, nonce: lfData.nonce, ...data}, 
+                    r => r.success ? res(r.data) : rej(new Error(r.data)), 'json')
+                .fail(() => rej(new Error('Network error')));
             });
         },
-        
-        completeInstallation: function() {
-            this.updateProgress(100, '100% - ' + landerflowPro.completed_text);
-            this.startButton.prop('disabled', false);
-            this.checkStatusButton.prop('disabled', false);
-            this.isProcessing = false;
-            
-            // Show success notification
-            this.showNotification(
-                '🎉 ' + 'All plugins have been installed and activated successfully! Your landing page setup is ready.',
-                'success'
-            );
-        },
-        
-        showLoadingState: function() {
-            this.checkStatusButton.prop('disabled', true);
-            this.checkStatusButton.find('.dashicons').addClass('dashicons-update');
-            this.checkStatusButton.find('.dashicons').css('animation', 'spin 1s linear infinite');
-        },
-        
-        hideLoadingState: function() {
-            this.checkStatusButton.prop('disabled', false);
-            this.checkStatusButton.find('.dashicons').removeClass('dashicons-update');
-            this.checkStatusButton.find('.dashicons').css('animation', '');
-        },
-        
-        showNotification: function(message, type) {
-            // Remove existing notifications
-            $('.landerflow-notification').remove();
-            
-            const notification = $(`
-                <div class="notice notice-${type} is-dismissible landerflow-notification">
-                    <p>${message}</p>
-                    <button type="button" class="notice-dismiss">
-                        <span class="screen-reader-text">Dismiss this notice.</span>
-                    </button>
-                </div>
-            `);
-            
-            $('.landerflow-pro-wrap h1').after(notification);
-            
-            // Auto dismiss after 8 seconds
-            setTimeout(() => {
-                notification.fadeOut(400, () => {
-                    notification.remove();
-                });
-            }, 8000);
-            
-            // Manual dismiss
-            notification.find('.notice-dismiss').on('click', function() {
-                notification.fadeOut(400, () => {
-                    notification.remove();
-                });
-            });
+
+        notice(msg, type='info') {
+            const $n = $('#lf-notice').text(msg).attr('class', `show ${type}`).fadeIn(200);
+            if(type !== 'error') setTimeout(() => $n.fadeOut(300), 4000);
         }
     };
-    
-    // Initialize LanderFlow Pro
-    LanderFlowPro.init();
+    lf.init();
 });
