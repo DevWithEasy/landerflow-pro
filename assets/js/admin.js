@@ -1,259 +1,31 @@
-jQuery(function($) {
-    const lf = {
-        busy: false,
-        coreTotal: lfData.core.length,
-
-        init() {
-            $('#lf-start').on('click', () => this.runBulk());
-            $('#lf-refresh').on('click', () => this.refreshStatus());
-            $('#lf-toggle').on('click', () => {
-                const $checks = $('input[name="lf_plugins[]"]:not(:disabled)');
-                const allChecked = $checks.filter(':checked').length === $checks.length;
-                $checks.prop('checked', !allChecked);
-            });
-            
-            // সিঙ্গেল বাটন ইভেন্ট হ্যান্ডলার
-            $(document).on('click', '.lf-single-action', (e) => {
-                e.preventDefault();
-                this.handleSingle($(e.target).closest('.lf-single-action'));
-            });
-
-            // অটো-রান লজিক (প্রথমবার ইন্সটল)
-            if ($('.lf-wrap').hasClass('auto-run')) {
-                setTimeout(() => this.runCoreOnly(), 1000);
-            } else {
-                this.refreshStatus();
-            }
-        },
-
-        // 🎯 অটো-ট্রিগার: শুধু কোর ৩টি ইন্সটল করে রিলোড
-        runCoreOnly() {
-            if (this.busy) return;
-            this.busy = true;
-            $('.lf-btn, .lf-single-action, input[type="checkbox"]').prop('disabled', true);
-            this.progressText('Installing core plugins...');
-            this.processBulk([...lfData.core], 0, true); // true = reload after done
-        },
-
-        // 🔘 সিঙ্গেল প্লাগিন ইন্সটল/অ্যাক্টিভেট লজিক (ফিক্সড)
-        handleSingle($btn) {
-            if ($btn.is(':disabled') || this.busy) return;
-            
-            const slug = $btn.data('slug');
-            const pluginName = lfData.plugins[slug]?.name || slug;
-            
-            // বাটন স্টেট ম্যানেজমেন্ট
-            $btn.prop('disabled', true).data('original-text', $btn.text());
-            
-            const isMissing = $btn.hasClass('btn-install');
-            const isInactive = $btn.hasClass('btn-activate');
-
-            // ধাপ ১: ইন্সটলেশন (যদি না থাকে)
-            if (isMissing) {
-                $btn.text('Installing...'); // টেক্সট আপডেট
-                
-                this.ajax('lf_install', {slug})
-                    .then(() => {
-                        // ধাপ ২: ইন্সটল শেষ, এখন অ্যাক্টিভেট
-                        $btn.text('Activating...'); 
-                        return this.ajax('lf_activate', {slug});
-                    })
-                    .then(() => {
-                        // ধাপ ৩: সফলভাবে শেষ
-                        this.finishSingleAction(slug, $btn, '✓ Active', true);
-                    })
-                    .catch(err => {
-                        this.handleErrorSingle(slug, $btn, err.message || 'Install Failed');
-                    });
-            } 
-            // ধাপ ১: শুধু অ্যাক্টিভেশন (যদি ইন্সটল করা থাকে)
-            else if (isInactive) {
-                $btn.text('Activating...');
-                
-                this.ajax('lf_activate', {slug})
-                    .then(() => {
-                        this.finishSingleAction(slug, $btn, '✓ Active', true);
-                    })
-                    .catch(err => {
-                        this.handleErrorSingle(slug, $btn, err.message || 'Activate Failed');
-                    });
-            }
-        },
-
-        // ✅ সিঙ্গেল অ্যাকশন সফল হলে কী হবে
-        finishSingleAction(slug, $btn, finalText, shouldReload) {
-            // ১. UI আপডেট
-            this.updateSingleUI(slug, 'active');
-            this.updateProgress();
-            
-            // ২. বাটন ফিক্স
-            $btn.removeClass('btn-install btn-activate').addClass('btn-done')
-                .text(finalText).prop('disabled', true);
-            
-            // ৩. নোটিশ
-            this.notice('✓ ' + lfData.plugins[slug].name + ' is ready!', 'success');
-            
-            // ৪. রিলোড লজিক (যদি প্রয়োজন হয়)
-            if (shouldReload) {
-                setTimeout(() => {
-                    location.reload(); 
-                }, 1500); // ১.৫ সেকেন্ড পর রিলোড
-            }
-        },
-
-        // ❌ এরর হ্যান্ডলিং
-        handleErrorSingle(slug, $btn, errMsg) {
-            console.error(errMsg);
-            const originalText = $btn.data('original-text') || 'Retry';
-            
-            // UI আপডেট (এরর স্টেট)
-            this.updateSingleUI(slug, 'error', errMsg);
-            
-            // বাটন রিসেট
-            $btn.prop('disabled', false).removeClass('loading').text('Retry');
-            
-            this.notice('Error: ' + errMsg, 'error');
-        },
-
-        // 📦 বাল্ক ইন্সটল লজিক
-        runBulk() {
-            const selected = [];
-            $('input[name="lf_plugins[]"]:checked').each(function() {
-                const $item = $(this).closest('.lf-item');
-                if (!$item.find('.lf-status').hasClass('st-active')) {
-                    selected.push($(this).val());
-                }
-            });
-
-            if (selected.length === 0) return this.notice('All selected plugins are already active.', 'info');
-            if (this.busy || !confirm(`Process ${selected.length} plugin(s)?`)) return;
-
-            this.busy = true;
-            $('.lf-btn, .lf-single-action, input[type="checkbox"]').prop('disabled', true);
-            this.progressText(`Starting...`);
-            this.processBulk(selected, 0, false); // false = no reload for manual bulk
-        },
-
-        processBulk(list, i, shouldReload) {
-            if (i >= list.length) {
-                return shouldReload ? this.finishWithReload() : this.finish();
-            }
-            const slug = list[i];
-            const $item = $(`.lf-item[data-slug="${slug}"]`);
-            const $btn = $item.find('.lf-single-action');
-            const needsInstall = $btn.hasClass('btn-install');
-
-            // ধাপ ১: ইন্সটল
-            const doInstall = () => {
-                $btn.text('Installing...');
-                this.ajax('lf_install', {slug})
-                    .then(() => doActivate())
-                    .catch(err => this.handleBulkError(slug, $btn, err.message));
-            };
-
-            // ধাপ ২: অ্যাক্টিভেট
-            const doActivate = () => {
-                $btn.text('Activating...');
-                this.ajax('lf_activate', {slug})
-                    .then(() => {
-                        this.updateSingleUI(slug, 'active');
-                        this.updateProgress();
-                        setTimeout(() => this.processBulk(list, i + 1, shouldReload), 400);
-                    })
-                    .catch(err => this.handleBulkError(slug, $btn, err.message));
-            };
-
-            if (needsInstall) {
-                doInstall();
-            } else {
-                doActivate();
-            }
-        },
-
-        handleBulkError(slug, $btn, errMsg) {
-            console.error(errMsg);
-            this.updateSingleUI(slug, 'error', errMsg);
-            $btn.text('Retry').prop('disabled', false);
-            this.notice(`${lfData.plugins[slug]?.name}: ${errMsg}`, 'error');
-            // Continue to next item even if one fails
-            // Note: In a real sequential process, you might want to stop here.
-        },
-
-        refreshStatus() {
-            this.ajax('lf_status', {}).then(data => {
-                $.each(data, (slug, s) => {
-                    const state = s.installed && s.active ? 'active' : s.installed ? 'inactive' : 'missing';
-                    this.updateSingleUI(slug, state);
-                });
-                this.updateProgress();
-            });
-        },
-
-        updateProgress() {
-            let coreDone = 0;
-            lfData.core.forEach(slug => {
-                const $status = $(`.lf-item[data-slug="${slug}"] .lf-status`);
-                if ($status.hasClass('st-active')) coreDone++;
-            });
-            const pct = Math.round((coreDone / this.coreTotal) * 100);
-            $('#lf-fill').css('width', pct + '%').css('background', pct >= 100 ? '#2e7d32' : '#0073aa');
-            this.progressText(pct >= 100 ? 'Core Setup Complete! 🎉' : `${coreDone}/${this.coreTotal} Core Plugins Ready`);
-        },
-
-        updateSingleUI(slug, state, errMsg = '') {
-            const $item = $(`.lf-item[data-slug="${slug}"]`);
-            if (!$item.length) return;
-            const $btn = $item.find('.lf-single-action');
-            const $status = $item.find('.lf-status');
-            const $check = $item.find('input[type="checkbox"]');
-
-            $status.removeClass('st-active st-inactive st-missing');
-            $btn.removeClass('btn-install btn-activate btn-done loading');
-
-            if (state === 'active') {
-                $status.addClass('st-active').text('✓ Active');
-                $btn.addClass('btn-done').text('✓ Active').prop('disabled', true);
-                $check.prop('checked', false).prop('disabled', true);
-            } else if (state === 'inactive') {
-                $status.addClass('st-inactive').text('⚡ Inactive');
-                $btn.addClass('btn-activate').text('Activate').prop('disabled', false);
-                $check.prop('checked', true).prop('disabled', false);
-            } else {
-                $status.addClass('st-missing').text(state === 'error' ? '✗ Error' : '⬜ Not Installed');
-                $btn.addClass('btn-install').text(errMsg || 'Install').prop('disabled', false);
-                $check.prop('checked', true).prop('disabled', false);
-                if (state === 'error' && errMsg) this.notice(errMsg, 'error');
-            }
-        },
-
-        progressText(txt) { $('#lf-progress-text').text(txt); },
-
-        finish() {
-            this.busy = false;
-            $('.lf-btn, .lf-single-action, input[type="checkbox"]').prop('disabled', false);
-            this.updateProgress();
-            this.notice('✓ Selection processed.', 'success');
-        },
-
-        finishWithReload() {
-            this.busy = false;
-            this.updateProgress();
-            this.notice('🎉 Core plugins ready! Reloading to update menu...', 'success');
-            setTimeout(() => location.reload(), 1500);
-        },
-
-        ajax(action, data) {
-            return new Promise((res, rej) => {
-                $.post(lfData.ajax, {action, nonce: lfData.nonce, ...data}, 
-                    r => r.success ? res(r.data) : rej(new Error(r.data)), 'json')
-                .fail((xhr, status) => rej(new Error(status === 'timeout' ? 'Timeout' : 'Network error')));
-            });
-        },
-
-        notice(msg, type='info') {
-            const $n = $('#lf-notice').text(msg).attr('class', `show ${type}`).fadeIn(200);
-            if(type !== 'error') setTimeout(() => $n.fadeOut(300), 4000);
-        }
-    };
-    lf.init();
-});
+jQuery(function($){'use strict';if(typeof lfData==='undefined'){console.error('lfData missing');return}
+const LFP={isProcessing:false,coreTotal:lfData.core.length,
+init(){const t=this;$('.stat-total').text(this.coreTotal);this.bindEvents();this.initNavigation();this.initTemplateLibrary();$('.lfp-wrap').hasClass('auto-install')?(this.toast('Auto-install starting...','info'),setTimeout(()=>this.runCoreOnly(),1200)):this.refreshStatus()},
+initNavigation(){$('.lfp-nav-item[data-section]').on('click',function(e){e.preventDefault();const s=$(this).data('section');$('.lfp-nav-item').removeClass('active');$(this).addClass('active');$('.lfp-section').addClass('hidden');$('#section-'+s).removeClass('hidden');if(s==='premium')LFP.refreshPremiumStatus()})},
+bindEvents(){$('#lf-start').on('click',()=>this.runBulk());$('#lf-refresh').on('click',()=>this.refreshStatus());$('#lf-toggle').on('click',()=>{const c=$('input[name="lf_plugins[]"]:not(:disabled)');c.prop('checked',c.filter(':checked').length!==c.length)});$('#lf-premium-install-all').on('click',()=>this.installAllPremium());$('#lf-premium-refresh').on('click',()=>this.refreshPremiumStatus());$(document).on('click','.lfp-btn-action',function(e){e.preventDefault();LFP.handleAction($(this))})},
+runCoreOnly(){if(this.isProcessing)return;this.isProcessing=true;$('.lfp-btn,.lfp-btn-action,input[type="checkbox"]').prop('disabled',true);this.processBulk([...lfData.core],0,true)},
+handleAction(b){if(b.is(':disabled')||this.isProcessing)return;const s=b.data('slug'),a=b.data('action'),t=b.data('type')||'free';b.prop('disabled',true);if(a==='install'){b.text(t==='premium'?'☁️ '+lfData.texts.downloading:lfData.texts.installing);this.setCardState(s,'installing',lfData.texts.installing);(t==='premium'?this.doPremiumInstall(s):this.doInstall(s)).then(()=>{b.text(lfData.texts.activating);this.setCardState(s,'activating',lfData.texts.activating);return this.doActivate(s)}).then(()=>this.finishAction(s,b)).catch(e=>this.errorAction(s,b,e.message))}else if(a==='activate'){b.text(lfData.texts.activating);this.doActivate(s).then(()=>this.finishAction(s,b)).catch(e=>this.errorAction(s,b,e.message))}},
+finishAction(s,b){this.updateCardUI(s,{installed:true,active:true});b.data('action','active').prop('disabled',true).text(lfData.texts.active_btn);this.toast('✓ Ready!','success');setTimeout(()=>location.reload(),1500)},
+errorAction(s,b,e){this.updateCardUI(s,{error:e});b.prop('disabled',false).text(lfData.texts.retry);this.toast('Error: '+e,'error')},
+runBulk(){const s=[];$('input[name="lf_plugins[]"]:checked').each(function(){const c=$(this).closest('.lfp-plugin-card');if(!c.hasClass('lfp-active'))s.push($(this).val())});if(!s.length)return this.toast('All active','info');if(this.isProcessing||!confirm(lfData.texts.confirm_bulk))return;this.isProcessing=true;$('.lfp-btn,.lfp-btn-action,input[type="checkbox"]').prop('disabled',true);this.processBulk(s,0,false)},
+processBulk(l,i,r){if(i>=l.length)return r?this.finishReload():this.finishBulk();const s=l[i],b=$('[data-plugin="'+s+'"]').find('.lfp-btn-action'),n=b.data('action')==='install',t=b.data('type')||'free';this.setCardState(s,'installing',lfData.texts.installing);(n?(t==='premium'?this.doPremiumInstall(s):this.doInstall(s)):Promise.resolve()).then(()=>{this.setCardState(s,'activating',lfData.texts.activating);return this.doActivate(s)}).then(()=>{this.updateCardUI(s,{installed:true,active:true});b.data('action','active').prop('disabled',true).text(lfData.texts.active_btn);setTimeout(()=>this.processBulk(l,i+1,r),400)}).catch(e=>{this.updateCardUI(s,{error:e.message});b.text(lfData.texts.retry).prop('disabled',false);setTimeout(()=>this.processBulk(l,i+1,r),400)})},
+doPremiumInstall(i){return new Promise((r,j)=>{$.ajax({url:lfData.ajax,type:'POST',timeout:600000,data:{action:'lf_premium_install',plugin_id:i,nonce:lfData.nonce},success:d=>d.success?r(d.data):j(new Error(d.data||'Failed')),error:(x,s)=>j(new Error(s==='timeout'?'Timeout':'Network'))})})},
+installAllPremium(){if(this.isProcessing||!confirm(lfData.texts.confirm_premium_bulk))return;this.isProcessing=true;$('.lfp-btn,.lfp-btn-action').prop('disabled',true);this.toast('☁️ Downloading & installing from CDN...','info');$.ajax({url:lfData.ajax,type:'POST',timeout:600000,data:{action:'lf_premium_bulk_install',nonce:lfData.nonce},success:r=>{this.isProcessing=false;$('.lfp-btn,.lfp-btn-action').prop('disabled',false);this.toast(r.success?'✓ All done!':'Some failed',r.success?'success':'warning');this.refreshPremiumStatus()},error:()=>{this.isProcessing=false;$('.lfp-btn,.lfp-btn-action').prop('disabled',false);this.toast('Failed','error')}})},
+refreshPremiumStatus(){$.ajax({url:lfData.ajax,type:'POST',data:{action:'lf_get_all_status',nonce:lfData.nonce},success:r=>{if(!r.success||!r.data.premium)return;$.each(r.data.premium,(s,d)=>this.updateCardUI(s,d))}})},
+doInstall(s){return new Promise((r,j)=>{$.ajax({url:lfData.ajax,type:'POST',timeout:30000,data:{action:'lf_install',slug:s,nonce:lfData.nonce},success:d=>d.success?r(d.data):j(new Error(d.data||'Failed')),error:(x,s)=>j(new Error(s==='timeout'?'Timeout':'Network'))})})},
+doActivate(s){return new Promise((r,j)=>{$.ajax({url:lfData.ajax,type:'POST',timeout:15000,data:{action:'lf_activate',slug:s,nonce:lfData.nonce},success:d=>d.success?r(d.data):j(new Error(d.data||'Failed')),error:()=>j(new Error('Network'))})})},
+refreshStatus(){const b=$('#lf-refresh');b.prop('disabled',true).find('span:first').addClass('lfp-spin');$.ajax({url:lfData.ajax,type:'POST',data:{action:'lf_status',nonce:lfData.nonce},success:r=>{if(!r.success)return;let d=0;$.each(r.data,(s,v)=>{this.updateCardUI(s,v);if(v.active&&lfData.core.indexOf(s)!==-1)d++});$('.stat-completed').text(d);this.updateProgressStats()},complete:()=>b.prop('disabled',false).find('span:first').removeClass('lfp-spin')})},
+setCardState(s,st,tx){const c=$('[data-plugin="'+s+'"]');c.removeClass('lfp-active lfp-error lfp-installing lfp-activating lfp-pending lfp-premium-ready');c.addClass('lfp-'+st)},
+updateCardUI(s,v){const c=$('[data-plugin="'+s+'"]'),b=c.find('.lfp-btn-action'),ch=c.find('.lfp-plugin-checkbox');c.removeClass('lfp-active lfp-error lfp-pending lfp-premium-ready');if(v.installed&&v.active){c.addClass('lfp-active');b.data('action','active').text(lfData.texts.active_btn).prop('disabled',true);ch.prop('checked',false).prop('disabled',true)}else if(v.error){c.addClass('lfp-error');b.text(lfData.texts.retry).prop('disabled',false)}else if(v.installed&&!v.active){c.addClass('lfp-pending');b.data('action','activate').text(lfData.texts.activate_btn).prop('disabled',false)}else if(v.zip_exists){c.addClass('lfp-premium-ready');b.data('action','install').text(lfData.texts.install_btn).prop('disabled',false)}else{c.addClass('lfp-pending');b.data('action','install').text(lfData.texts.install_btn).prop('disabled',false)}},
+updateProgress(pct,lb){$('#lfp-progress-fill').css('width',pct+'%');$('#lfp-progress-pct').text(pct+'%');if(lb)$('#lfp-progress-label').text(lb)},
+updateProgressStats(){let d=0;lfData.core.forEach(s=>{if($('[data-plugin="'+s+'"]').hasClass('lfp-active'))d++});const p=Math.round((d/this.coreTotal)*100);$('.stat-completed').text(d);this.updateProgress(p,p>=100?'Core Complete 🎉':d+'/'+this.coreTotal+' Core Ready');this.toggleWarning(d<this.coreTotal)},
+toggleWarning(s){s?$('#lfp-warning').removeClass('hidden'):$('#lfp-warning').addClass('hidden')},
+finishBulk(){this.isProcessing=false;$('.lfp-btn,.lfp-btn-action,input[type="checkbox"]').prop('disabled',false);this.toast('✓ Done!','success');setTimeout(()=>location.reload(),1500)},
+finishReload(){this.isProcessing=false;this.toast('🎉 All done!','success');setTimeout(()=>location.reload(),1500)},
+toast(m,t){const i={success:'✅',error:'❌',warning:'⚠️',info:'ℹ️'};const el=$('<div class="lfp-toast '+t+'"><span>'+(i[t]||'')+'</span><span>'+m+'</span><button class="lfp-toast-close">&times;</button></div>');$('#lfp-notification-area').prepend(el);el.find('.lfp-toast-close').on('click',()=>el.fadeOut(300,()=>el.remove()));setTimeout(()=>el.fadeOut(400,()=>el.remove()),t==='success'?6000:4000)},
+initTemplateLibrary(){let tm;$('#lfp-tl-search').on('input',function(){clearTimeout(tm);tm=setTimeout(()=>LFP.filterTemplates($(this).val().toLowerCase().trim()),300)});$(document).on('click','.lfp-tl-filter-btn',function(){$('.lfp-tl-filter-btn').removeClass('active');$(this).addClass('active');LFP.filterByCategory($(this).data('filter'))});$(document).on('click','.lfp-tl-preview-btn',function(e){e.preventDefault();LFP.openPreviewModal({title:$(this).data('title'),img:$(this).data('img'),steps:$(this).data('steps'),desc:$(this).data('desc')})});$(document).on('click','.lfp-tl-download-btn-footer, .lfp-tl-download-btn-overlay',function(e){e.preventDefault();LFP.downloadJSON($(this))});$(document).on('click','.lfp-tl-clear-search',()=>{$('#lfp-tl-search').val('').trigger('input');$('.lfp-tl-filter-btn[data-filter="all"]').trigger('click')})},
+filterTemplates(q){const f=$('.lfp-tl-filter-btn.active').data('filter')||'all';let v=0;$('.lfp-tl-card').each(function(){const c=$(this),m=(!q||(c.data('search')||'').includes(q))&&(f==='all'||c.data('category')===f);m?(c.removeClass('hidden').fadeIn(200),v++):c.addClass('hidden').fadeOut(200)});v===0?$('#lfp-tl-empty').removeClass('hidden'):$('#lfp-tl-empty').addClass('hidden')},
+filterByCategory(f){this.filterTemplates($('#lfp-tl-search').val().toLowerCase().trim())},
+openPreviewModal(d){$('#lfp-preview-modal').remove();const m=$('<div class="lfp-preview-modal" id="lfp-preview-modal"><div class="lfp-preview-overlay"></div><div class="lfp-preview-content"><button class="lfp-preview-close">&times;</button><div class="lfp-preview-header"><h2 class="lfp-preview-title">'+this.esc(d.title)+'</h2><p class="lfp-preview-meta"><span>📋 '+this.esc(d.steps)+'</span><span>'+this.esc(d.desc)+'</span></p></div><div class="lfp-preview-image"><img src="'+d.img+'" class="lfp-preview-img"></div></div></div>');$('body').append(m);setTimeout(()=>m.addClass('active'),50);const cl=()=>{m.removeClass('active');setTimeout(()=>m.remove(),300);$(document).off('keydown.previewModal')};$('.lfp-preview-overlay,.lfp-preview-close').on('click',cl);$(document).on('keydown.previewModal',e=>{if(e.key==='Escape')cl()})},
+downloadJSON(b){if(this.isProcessing)return;const u=b.data('json'),t=b.data('title')||'funnel',ot=b.text();this.isProcessing=true;b.prop('disabled',true).text('⏳ Downloading...');$.ajax({url:lfData.ajax,type:'POST',timeout:60000,data:{action:'lf_download_json',json_url:u,nonce:lfData.nonce},success:r=>{this.isProcessing=false;b.prop('disabled',false).text(ot);if(r.success&&r.data.content){const bs=atob(r.data.content),ab=new ArrayBuffer(bs.length),ia=new Uint8Array(ab);for(let i=0;i<bs.length;i++)ia[i]=bs.charCodeAt(i);const blob=new Blob([ab],{type:'application/json'});const url=window.URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=r.data.filename||(t.replace(/[^a-z0-9]/gi,'-').toLowerCase()+'.json');document.body.appendChild(a);a.click();document.body.removeChild(a);window.URL.revokeObjectURL(url);this.toast('✅ Downloaded! Import via CartFlows → Import.','success')}else{window.open(u,'_blank');this.toast('📥 Opened in new tab.','info')}},error:()=>{this.isProcessing=false;b.prop('disabled',false).text(ot);window.open(u,'_blank');this.toast('📥 Opened in new tab.','info')}})},
+esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML}};LFP.init()});
