@@ -1,0 +1,56 @@
+[
+  {
+    "id": "woocommerce",
+    "slug": "woocommerce",
+    "name": "WooCommerce",
+    "file": "woocommerce/woocommerce.php",
+    "icon": "🛒",
+    "desc": "Powerful eCommerce platform",
+    "required": true
+  },
+  {
+    "id": "elementor",
+    "slug": "elementor",
+    "name": "Elementor",
+    "file": "elementor/elementor.php",
+    "icon": "⚡",
+    "desc": "Visual drag & drop page builder",
+    "required": true
+  },
+  {
+    "id": "cartflows",
+    "slug": "cartflows",
+    "name": "CartFlows",
+    "file": "cartflows/cartflows.php",
+    "icon": "🚀",
+    "desc": "Sales funnel & checkout builder",
+    "required": true
+  },
+  {
+    "id": "litespeed-cache",
+    "slug": "litespeed-cache",
+    "name": "LiteSpeed Cache",
+    "file": "litespeed-cache/litespeed-cache.php",
+    "icon": "⚡",
+    "desc": "High-performance page caching",
+    "required": false
+  },
+  {
+    "id": "svg-support",
+    "slug": "svg-support",
+    "name": "SVG Support",
+    "file": "svg-support/svg-support.php",
+    "icon": "🎨",
+    "desc": "Upload SVG files",
+    "required": false
+  },
+  {
+    "id": "code-snippets",
+    "slug": "code-snippets",
+    "name": "Code Snippets",
+    "file": "code-snippets/code-snippets.php",
+    "icon": "💻",
+    "desc": "Add custom code snippets",
+    "required": false
+  }
+]

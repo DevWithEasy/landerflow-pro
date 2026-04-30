@@ -1,0 +1,74 @@
+[
+  {
+    "id": "elementor-pro",
+    "name": "Elementor Pro",
+    "desc": "Advanced page builder",
+    "icon": "🎨",
+    "zip_url": "https://github.com/DevWithEasy/landerflow-pro/releases/download/preium_plugin/elementor-pro.zip",
+    "plugin_file": "elementor-pro/elementor-pro.php",
+    "category": "Page Builder",
+    "version": "3.18.0",
+    "author": "Elementor",
+    "required": true
+  },
+  {
+    "id": "cartflows-pro",
+    "name": "CartFlows Pro",
+    "desc": "Sales funnel builder",
+    "icon": "🛒",
+    "zip_url": "https://github.com/DevWithEasy/landerflow-pro/releases/download/preium_plugin/cartflows-pro.zip",
+    "plugin_file": "cartflows-pro/cartflows-pro.php",
+    "category": "Funnel",
+    "version": "2.0.0",
+    "author": "CartFlows",
+    "required": true
+  },
+  {
+    "id": "pro-elements",
+    "name": "Pro Elements",
+    "desc": "Free Elementor Pro alternative",
+    "icon": "⚡",
+    "zip_url": "https://github.com/DevWithEasy/landerflow-pro/releases/download/preium_plugin/pro-elements.zip",
+    "plugin_file": "pro-elements/pro-elements.php",
+    "category": "Page Builder",
+    "version": "latest",
+    "author": "ProElements",
+    "required": false
+  },
+  {
+    "id": "pixelyoursite-pro",
+    "name": "PixelYourSite Pro",
+    "desc": "Facebook Pixel tracking",
+    "icon": "📊",
+    "zip_url": "https://github.com/DevWithEasy/landerflow-pro/releases/download/preium_plugin/pixelyoursite-pro.zip",
+    "plugin_file": "pixelyoursite-pro/pixelyoursite-pro.php",
+    "category": "Marketing",
+    "version": "latest",
+    "author": "PixelYourSite",
+    "required": false
+  },
+  {
+    "id": "sohag-ecommerce",
+    "name": "Sohag Online Ecommerce",
+    "desc": "Custom ecommerce solution",
+    "icon": "🛍️",
+    "zip_url": "https://github.com/DevWithEasy/landerflow-pro/releases/download/preium_plugin/SohagOnlineEcommerce.zip",
+    "plugin_file": "Sohag Online eCommerce/orderflow-real-order-tracking.php",
+    "category": "Ecommerce",
+    "version": "1.0.0",
+    "author": "Custom",
+    "required": false
+  },
+  {
+    "id": "all-in-one-business",
+    "name": "All in One Business Solution",
+    "desc": "Complete business toolkit",
+    "icon": "🏢",
+    "zip_url": "https://github.com/DevWithEasy/landerflow-pro/releases/download/preium_plugin/All.in.One.Business.Solution.zip",
+    "plugin_file": "All in One Business Solution/orderflow-real-order-tracking.php",
+    "category": "Business",
+    "version": "1.0.0",
+    "author": "Custom",
+    "required": false
+  }
+]
