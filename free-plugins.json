@@ -52,5 +52,32 @@
     "icon": "💻",
     "desc": "Add custom code snippets",
     "required": false
+  },
+    {
+    "id": "Chaty",
+    "slug": "chaty",
+    "name": "Chaty",
+    "file": "chaty/chaty.php",
+    "icon": "💬",
+    "desc": "Interactive chat widget",
+    "required": false
+  },
+    {
+    "id": "woocommerce-direct-checkout",
+    "slug": "woocommerce-direct-checkout",
+    "name": "Direct Checkout for WooCommerce",
+    "file": "woocommerce-direct-checkout/woocommerce-direct-checkout.php",
+    "icon": "🛍️",
+    "desc": "Simplified checkout process for WooCommerce",
+    "required": false
+  },
+   {
+    "id": "woo-checkout-field-editor-pro",
+    "slug": "woo-checkout-field-editor-pro",
+    "name": "Checkout Field Editor",
+    "file": "woo-checkout-field-editor-pro/checkout-form-designer.php",
+    "icon": "🛍️",
+    "desc": "Customize WooCommerce checkout fields",
+    "required": false
   }
 ]
