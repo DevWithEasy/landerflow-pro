@@ -88,7 +88,7 @@
     "name": "Steadfast",
     "desc": "Steadfast plugin for WooCommerce",
     "icon": "🚚",
-    "zip_url": "https://github.com/DevWithEasy/landerflow-pro/releases/download/preium_plugin/Send.To.SteadFast.zip",
+    "zip_url": "https://github.com/DevWithEasy/landerflow-pro/releases/download/preium_plugin/SendToSteadFast.zip",
     "plugin_file": "SteadFast/steadfast-api.php",
     "category": "Business",
     "version": "1.0.0",
