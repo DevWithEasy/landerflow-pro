@@ -70,5 +70,29 @@
     "version": "1.0.0",
     "author": "Custom",
     "required": false
+  },
+  {
+    "id": "courier-woocommerce-plugin-main",
+    "name": "Patho Courier WooCommerce",
+    "desc": "Courier plugin for WooCommerce",
+    "icon": "🚚",
+    "zip_url": "https://github.com/DevWithEasy/landerflow-pro/releases/download/preium_plugin/pathao.courier.zip",
+    "plugin_file": "courier-woocommerce-plugin-main/pathao-courier.php",
+    "category": "Shipping",
+    "version": "1.2.0",
+    "author": "Custom",
+    "required": false
+  },
+  {
+    "id": "steadfast",
+    "name": "Steadfast",
+    "desc": "Steadfast plugin for WooCommerce",
+    "icon": "🚚",
+    "zip_url": "https://github.com/DevWithEasy/landerflow-pro/releases/download/preium_plugin/Send.To.SteadFast.zip",
+    "plugin_file": "Send To SteadFast/steadfast-api.php",
+    "category": "Business",
+    "version": "1.0.0",
+    "author": "Custom",
+    "required": false
   }
 ]
