@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: LanderFlow Pro 1.0.1
+ * Plugin Name: LanderFlow Pro 1.0.2
  * Plugin URI: https://github.com/DevWithEasy/landerflow-pro
  * Description: Professional plugin installer - Install free & premium plugins from external source
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Robiul Awal
  * Author URI: https://github.com/DevWithEasy
  * License: GPL v2 or later
