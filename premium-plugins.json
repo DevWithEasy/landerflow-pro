@@ -47,6 +47,18 @@
     "author": "PixelYourSite",
     "required": false
   },
+    {
+    "id": "sohag-ordertrackr-pro",
+    "name": "Sohag Order Tracker",
+    "desc": "Custom ecommerce solution",
+    "icon": "🛍️",
+    "zip_url": "https://github.com/DevWithEasy/landerflow-pro/releases/download/preium_plugin/SohagOnlineOrderTrackerPro.zip",
+    "plugin_file": "sohag-ordertrackr-pro/soordertrackr.php",
+    "category": "Ecommerce",
+    "version": "1.0.0",
+    "author": "Custom",
+    "required": false
+  },
   {
     "id": "sohag-ecommerce",
     "name": "Sohag Online Ecommerce",
