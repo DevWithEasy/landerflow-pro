@@ -11,7 +11,7 @@
  */
 if (!defined('ABSPATH')) exit;
 
-define('LANDERFLOW_PRO_VERSION', '1.0.1');
+define('LANDERFLOW_PRO_VERSION', '1.0.2');
 define('LANDERFLOW_PRO_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('LANDERFLOW_PRO_PLUGIN_URL', plugin_dir_url(__FILE__));
 require_once LANDERFLOW_PRO_PLUGIN_DIR . 'includes/class-plugin-installer.php';
