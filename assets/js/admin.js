@@ -4,14 +4,18 @@ jQuery(function($) {
 
     var LFP = {
         freePlugins: [],
-        premiumPlugins: [],
         isProcessing: false,
 
         init: function() {
             this.loadFreePlugins();
-            this.loadPremiumPlugins();
             this.bindEvents();
             this.checkAutoInstall();
+        },
+
+        escapeHtml: function(str) {
+            return String(str).replace(/[&<>"']/g, function(c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
         },
 
         checkAutoInstall: function() {
@@ -28,7 +32,7 @@ jQuery(function($) {
                 type: 'POST',
                 data: { action: 'lf_get_all_status', nonce: lfData.nonce },
                 success: function(r) {
-                    if (!r.success) return;
+                    if (!r.success || !r.data || !r.data.free) return;
                     var missingCore = [];
                     $.each(r.data.free, function(slug, info) {
                         if (info.required && !info.active) {
@@ -55,6 +59,14 @@ jQuery(function($) {
         },
 
         showCoreInstallModal: function(missingCore) {
+            var items = missingCore.map(function(p) {
+                return '<div class="lfp-modal-plugin-item" data-slug="' + LFP.escapeHtml(p.slug) + '">' +
+                    '<div class="icon">📦</div>' +
+                    '<div class="name">' + LFP.escapeHtml(p.name) + '</div>' +
+                    '<div class="status">⏳ Waiting</div>' +
+                '</div>';
+            }).join('');
+
             var modal = $(
                 '<div class="lfp-modal-overlay">' +
                 '<div class="lfp-modal">' +
@@ -63,13 +75,7 @@ jQuery(function($) {
                 '<button class="lfp-modal-close">&times;</button>' +
                 '</div>' +
                 '<div class="lfp-modal-body" id="core-modal-list">' +
-                missingCore.map(function(p) {
-                    return '<div class="lfp-modal-plugin-item" data-slug="' + p.slug + '">' +
-                        '<div class="icon">📦</div>' +
-                        '<div class="name">' + p.name + '</div>' +
-                        '<div class="status">⏳ Waiting</div>' +
-                    '</div>';
-                }).join('') +
+                items +
                 '</div>' +
                 '<div class="lfp-modal-footer">' +
                 '<button class="lfp-btn primary" id="core-install-btn">⬇ Install & Activate All</button>' +
@@ -104,7 +110,6 @@ jQuery(function($) {
             var item = modal.find('[data-slug="' + p.slug + '"]');
             item.find('.status').text('⬇ Installing...').css('color', '#F0C040');
             
-            // Find the plugin data
             var pluginData = this.freePlugins.find(function(fp) { return (fp.id || fp.slug) === p.slug; });
             if (!pluginData) {
                 this.toast('❌ Plugin data not found: ' + p.name, 'error');
@@ -132,21 +137,12 @@ jQuery(function($) {
         bindEvents: function() {
             var self = this;
 
-            // Free plugins bulk install
             $('#install-selected-free').on('click', function() {
                 self.installSelectedFree();
             });
 
-            // Premium plugins bulk install
-            $('#install-selected-premium').on('click', function() {
-                self.installSelectedPremium();
-            });
-
-            // Refresh buttons
             $('#refresh-free').on('click', function() { self.loadFreePlugins(); });
-            $('#refresh-premium').on('click', function() { self.loadPremiumPlugins(); });
 
-            // Single plugin action
             $(document).on('click', '.lfp-action-btn', function(e) {
                 e.preventDefault();
                 var btn = $(this);
@@ -154,12 +150,10 @@ jQuery(function($) {
                 self.handleSingleAction(btn);
             });
 
-            // Checkbox changes update counts
             $(document).on('change', '.lfp-plugin-checkbox', function() {
                 self.updateCounts();
             });
 
-            // Keyboard escape for modals
             $(document).on('keydown', function(e) {
                 if (e.key === 'Escape') $('.lfp-modal-overlay').remove();
             });
@@ -172,32 +166,13 @@ jQuery(function($) {
                 type: 'POST',
                 data: { action: 'lf_get_free_plugins', nonce: lfData.nonce },
                 success: function(r) {
-                    if (r.success) {
+                    if (r.success && r.data && $.isArray(r.data.plugins)) {
                         self.freePlugins = r.data.plugins;
                         self.renderFreePlugins();
                     }
                 },
                 error: function() {
                     $('#core-plugins, #optional-plugins').html('<p style="color:#EF4444;text-align:center;">❌ Failed to load</p>');
-                }
-            });
-        },
-
-        loadPremiumPlugins: function() {
-            var self = this;
-            $.ajax({
-                url: lfData.ajax,
-                type: 'POST',
-                data: { action: 'lf_get_premium_plugins', nonce: lfData.nonce },
-                success: function(r) {
-                    if (r.success) {
-                        self.premiumPlugins = r.data.plugins;
-                        $('#premium-source').text((r.data.source === 'live' ? '🌐 Live' : r.data.source === 'cache' ? '💾 Cached' : '📦 Fallback') + ' • ' + self.premiumPlugins.length + ' plugins');
-                        self.renderPremiumPlugins();
-                    }
-                },
-                error: function() {
-                    $('#premium-plugins').html('<p style="color:#EF4444;text-align:center;">❌ Failed to load</p>');
                 }
             });
         },
@@ -210,7 +185,7 @@ jQuery(function($) {
             this.freePlugins.forEach(function(p) {
                 var isActive = p.active;
                 var isInstalled = p.installed;
-                var card = self.createPluginCard(p, isActive, isInstalled, 'free');
+                var card = self.createPluginCard(p, isActive, isInstalled);
                 
                 if (p.required) {
                     coreContainer.append(card);
@@ -230,67 +205,48 @@ jQuery(function($) {
             this.updateProgress();
         },
 
-        renderPremiumPlugins: function() {
-            var self = this;
-            var container = $('#premium-plugins').empty();
-            
-            if (!this.premiumPlugins.length) {
-                container.html('<div class="lfp-skeleton">No premium plugins found</div>');
-                return;
-            }
-            
-            this.premiumPlugins.forEach(function(p) {
-                var isActive = p.active;
-                var isInstalled = p.installed;
-                var card = self.createPluginCard(p, isActive, isInstalled, 'premium');
-                container.append(card);
-            });
-            
-            this.updateCounts();
-        },
-
-        createPluginCard: function(p, isActive, isInstalled, type) {
-            var id = type === 'premium' ? p.id : (p.id || p.slug);
-            var file = type === 'premium' ? (p.plugin_file || '') : (p.file || '');
+        createPluginCard: function(p, isActive, isInstalled) {
+            var id = p.id || p.slug;
+            var file = p.file || '';
             var name = p.name || 'Plugin';
             var desc = p.desc || '';
             var icon = p.icon || '📦';
             var required = p.required || false;
-            var category = p.category || (type === 'premium' ? 'Premium' : 'Free');
+            var category = p.category || 'Free';
             var version = p.version || '';
             
             var cardClass = isActive ? 'active' : (isInstalled ? 'installed' : '');
-            var statusClass = isActive ? 'active' : (isInstalled ? 'inactive' : (type === 'premium' ? 'premium' : 'not-installed'));
-            var statusText = isActive ? 'Active' : (isInstalled ? 'Inactive' : (type === 'premium' ? 'CDN Available' : 'Not Installed'));
+            var statusClass = isActive ? 'active' : (isInstalled ? 'inactive' : 'not-installed');
+            var statusText = isActive ? 'Active' : (isInstalled ? 'Inactive' : 'Not Installed');
             var btnAction = isActive ? 'active' : (isInstalled ? 'activate' : 'install');
             var btnText = isActive ? '✓ Active' : (isInstalled ? 'Activate' : 'Install');
             var btnDisabled = isActive ? 'disabled' : '';
             var checkboxDisabled = isActive ? 'disabled' : '';
             var checkboxChecked = required && !isActive ? 'checked' : '';
 
-            return '<div class="lfp-plugin-card ' + cardClass + '" data-plugin="' + id + '" data-type="' + type + '" data-file="' + file + '">' +
-                '<div class="lfp-plugin-icon">' + icon + '</div>' +
+            return '<div class="lfp-plugin-card ' + cardClass + '" data-plugin="' + this.escapeHtml(id) + '" data-type="free" data-file="' + this.escapeHtml(file) + '">' +
+                '<div class="lfp-plugin-icon">' + this.escapeHtml(icon) + '</div>' +
                 '<div class="lfp-plugin-info">' +
                     '<div class="lfp-plugin-name">' +
                         '<label>' +
-                            '<input type="checkbox" class="lfp-plugin-checkbox" data-type="' + type + '" data-file="' + file + '" ' + checkboxDisabled + ' ' + checkboxChecked + '>' +
-                            name +
+                            '<input type="checkbox" class="lfp-plugin-checkbox" data-type="free" data-file="' + this.escapeHtml(file) + '" ' + checkboxDisabled + ' ' + checkboxChecked + '>' +
+                            this.escapeHtml(name) +
                         '</label>' +
                         (required ? '<span class="lfp-required-badge">Required</span>' : '') +
                     '</div>' +
-                    '<div class="lfp-plugin-desc">' + desc + '</div>' +
+                    '<div class="lfp-plugin-desc">' + this.escapeHtml(desc) + '</div>' +
                     '<div class="lfp-plugin-meta">' +
-                        '<span class="lfp-tag">' + category + '</span>' +
-                        (version ? '<span class="lfp-tag">v' + version + '</span>' : '') +
-                        (type === 'premium' ? '<span class="lfp-tag">☁️ CDN</span>' : '<span class="lfp-tag">WP.org</span>') +
+                        '<span class="lfp-tag">' + this.escapeHtml(category) + '</span>' +
+                        (version ? '<span class="lfp-tag">v' + this.escapeHtml(version) + '</span>' : '') +
+                        '<span class="lfp-tag">WP.org</span>' +
                     '</div>' +
                 '</div>' +
                 '<div class="lfp-plugin-status">' +
                     '<span class="lfp-status-badge ' + statusClass + '">' +
                         '<span class="lfp-status-dot"></span>' +
-                        statusText +
+                        this.escapeHtml(statusText) +
                     '</span>' +
-                    '<button class="lfp-action-btn" data-action="' + btnAction + '" data-type="' + type + '" data-file="' + file + '" data-plugin="' + id + '" ' + btnDisabled + '>' + btnText + '</button>' +
+                    '<button class="lfp-action-btn" data-action="' + btnAction + '" data-type="free" data-file="' + this.escapeHtml(file) + '" data-plugin="' + this.escapeHtml(id) + '" ' + btnDisabled + '>' + this.escapeHtml(btnText) + '</button>' +
                 '</div>' +
             '</div>';
         },
@@ -307,9 +263,6 @@ jQuery(function($) {
         },
 
         updateCounts: function() {
-            var self = this;
-            
-            // Free plugins count
             var freeChecked = 0;
             $('.lfp-plugin-checkbox[data-type="free"]:checked').each(function() {
                 var card = $(this).closest('.lfp-plugin-card');
@@ -317,15 +270,6 @@ jQuery(function($) {
             });
             $('#free-count').text(freeChecked);
             $('#install-selected-free').prop('disabled', freeChecked === 0 || this.isProcessing);
-            
-            // Premium plugins count
-            var premiumChecked = 0;
-            $('.lfp-plugin-checkbox[data-type="premium"]:checked').each(function() {
-                var card = $(this).closest('.lfp-plugin-card');
-                if (!card.hasClass('active')) premiumChecked++;
-            });
-            $('#premium-count').text(premiumChecked);
-            $('#install-selected-premium').prop('disabled', premiumChecked === 0 || this.isProcessing);
         },
 
         installSelectedFree: function() {
@@ -349,7 +293,7 @@ jQuery(function($) {
                 return;
             }
             
-            if (!confirm('Install and activate ' + toInstall.length + ' selected free plugin(s)?')) return;
+            if (!confirm('Install and activate ' + toInstall.length + ' selected plugin(s)?')) return;
             
             this.isProcessing = true;
             $('.lfp-btn').prop('disabled', true);
@@ -357,42 +301,10 @@ jQuery(function($) {
             this.processBatch(toInstall, 0);
         },
 
-        installSelectedPremium: function() {
-            var self = this;
-            var toInstall = [];
-            
-            $('.lfp-plugin-checkbox[data-type="premium"]:checked').each(function() {
-                var card = $(this).closest('.lfp-plugin-card');
-                if (!card.hasClass('active')) {
-                    var pluginData = self.premiumPlugins.find(function(p) { return p.id === card.data('plugin'); });
-                    toInstall.push({
-                        id: card.data('plugin'),
-                        file: card.data('file'),
-                        name: pluginData ? pluginData.name : card.find('.lfp-plugin-name label').text().trim(),
-                        type: 'premium',
-                        zipUrl: pluginData ? pluginData.zip_url : ''
-                    });
-                }
-            });
-            
-            if (!toInstall.length) {
-                this.toast('All selected premium plugins are already active.', 'info');
-                return;
-            }
-            
-            if (!confirm('Download and install ' + toInstall.length + ' premium plugin(s) from CDN?')) return;
-            
-            this.isProcessing = true;
-            $('.lfp-btn').prop('disabled', true);
-            this.toast('☁️ Downloading ' + toInstall.length + ' plugin(s)...', 'info');
-            this.processBatch(toInstall, 0);
-        },
-
         handleSingleAction: function(btn) {
             var self = this;
             var id = btn.data('plugin');
             var action = btn.data('action');
-            var type = btn.data('type');
             var file = btn.data('file');
             var card = btn.closest('.lfp-plugin-card');
             var statusBadge = card.find('.lfp-status-badge');
@@ -403,31 +315,28 @@ jQuery(function($) {
                 statusBadge.removeClass().addClass('lfp-status-badge inactive').html('<span class="lfp-status-dot"></span>Installing...');
                 card.addClass('installing');
                 
-                var installPromise = type === 'premium' 
-                    ? this.doPremiumInstall(id, file, name)
-                    : this.doInstall(id, file);
-                
-                installPromise.then(function() {
-                    btn.text('Activating...').removeClass('installing').addClass('activating');
-                    statusBadge.removeClass().addClass('lfp-status-badge inactive').html('<span class="lfp-status-dot"></span>Activating...');
-                    card.removeClass('installing').addClass('activating');
-                    return self.doActivate(file);
-                })
-                .then(function() {
-                    card.addClass('active').removeClass('activating installed');
-                    statusBadge.removeClass().addClass('lfp-status-badge active').html('<span class="lfp-status-dot"></span>Active');
-                    btn.removeClass('activating').text('✓ Active').data('action', 'active').prop('disabled', true);
-                    card.find('.lfp-plugin-checkbox').prop('checked', false).prop('disabled', true);
-                    self.toast('✅ ' + name + ' active!', 'success');
-                    self.updateCounts();
-                    self.updateProgress();
-                })
-                .catch(function(e) {
-                    card.addClass('error').removeClass('installing activating');
-                    statusBadge.removeClass().addClass('lfp-status-badge error').html('<span class="lfp-status-dot"></span>Failed');
-                    btn.prop('disabled', false).text('Retry').data('action', 'install').removeClass('installing activating');
-                    self.toast('❌ ' + name + ': ' + e.message, 'error');
-                });
+                this.doInstall(id, file)
+                    .then(function() {
+                        btn.text('Activating...').removeClass('installing').addClass('activating');
+                        statusBadge.removeClass().addClass('lfp-status-badge inactive').html('<span class="lfp-status-dot"></span>Activating...');
+                        card.removeClass('installing').addClass('activating');
+                        return self.doActivate(file);
+                    })
+                    .then(function() {
+                        card.addClass('active').removeClass('activating installed');
+                        statusBadge.removeClass().addClass('lfp-status-badge active').html('<span class="lfp-status-dot"></span>Active');
+                        btn.removeClass('activating').text('✓ Active').data('action', 'active').prop('disabled', true);
+                        card.find('.lfp-plugin-checkbox').prop('checked', false).prop('disabled', true);
+                        self.toast('✅ ' + name + ' active!', 'success');
+                        self.updateCounts();
+                        self.updateProgress();
+                    })
+                    .catch(function(e) {
+                        card.addClass('error').removeClass('installing activating');
+                        statusBadge.removeClass().addClass('lfp-status-badge error').html('<span class="lfp-status-dot"></span>Failed');
+                        btn.prop('disabled', false).text('Retry').data('action', 'install').removeClass('installing activating');
+                        self.toast('❌ ' + name + ': ' + e.message, 'error');
+                    });
             } else if (action === 'activate') {
                 btn.prop('disabled', true).text('Activating...').addClass('activating');
                 statusBadge.removeClass().addClass('lfp-status-badge inactive').html('<span class="lfp-status-dot"></span>Activating...');
@@ -460,7 +369,7 @@ jQuery(function($) {
             }
             
             var p = list[index];
-            var card = $('[data-plugin="' + p.id + '"][data-type="' + p.type + '"]');
+            var card = $('[data-plugin="' + p.id + '"][data-type="free"]');
             var btn = card.find('.lfp-action-btn');
             var statusBadge = card.find('.lfp-status-badge');
             var needsInstall = btn.data('action') === 'install';
@@ -472,9 +381,7 @@ jQuery(function($) {
                 statusBadge.removeClass().addClass('lfp-status-badge inactive').html('<span class="lfp-status-dot"></span>Installing...');
                 card.addClass('installing');
                 
-                var installPromise = p.type === 'premium'
-                    ? this.doPremiumInstall(p.id, p.file, p.name)
-                    : this.doInstall(p.id, p.file);
+                var installPromise = this.doInstall(p.id, p.file);
             } else {
                 btn.text('Activating...').addClass('activating');
                 statusBadge.removeClass().addClass('lfp-status-badge inactive').html('<span class="lfp-status-dot"></span>Activating...');
@@ -508,32 +415,6 @@ jQuery(function($) {
             });
         },
 
-        doPremiumInstall: function(id, file, name) {
-            var pluginData = this.premiumPlugins.find(function(p) { return p.id === id; });
-            return new Promise(function(resolve, reject) {
-                $.ajax({
-                    url: lfData.ajax,
-                    type: 'POST',
-                    timeout: 600000,
-                    data: {
-                        action: 'lf_premium_install',
-                        plugin_id: id,
-                        zip_url: pluginData ? pluginData.zip_url : '',
-                        plugin_file: file,
-                        plugin_name: name,
-                        nonce: lfData.nonce
-                    },
-                    success: function(d) {
-                        if (d.success) resolve();
-                        else reject(new Error(d.data || 'Install failed'));
-                    },
-                    error: function(xhr) {
-                        reject(new Error(xhr.responseText || 'Network error'));
-                    }
-                });
-            });
-        },
-
         doInstall: function(slug, file) {
             return new Promise(function(resolve, reject) {
                 $.ajax({
@@ -551,7 +432,9 @@ jQuery(function($) {
                         else reject(new Error(d.data || 'Install failed'));
                     },
                     error: function(xhr) {
-                        reject(new Error(xhr.responseText || 'Network error'));
+                        var msg = 'Network error';
+                        if (xhr && xhr.responseJSON && xhr.responseJSON.data) msg = xhr.responseJSON.data;
+                        reject(new Error(msg));
                     }
                 });
             });
@@ -573,7 +456,9 @@ jQuery(function($) {
                         else reject(new Error(d.data || 'Activate failed'));
                     },
                     error: function(xhr) {
-                        reject(new Error(xhr.responseText || 'Network error'));
+                        var msg = 'Network error';
+                        if (xhr && xhr.responseJSON && xhr.responseJSON.data) msg = xhr.responseJSON.data;
+                        reject(new Error(msg));
                     }
                 });
             });
@@ -581,7 +466,6 @@ jQuery(function($) {
 
         refreshAllData: function() {
             this.loadFreePlugins();
-            this.loadPremiumPlugins();
             this.checkCorePlugins();
         },
 
@@ -595,7 +479,6 @@ jQuery(function($) {
                     activeCore++;
                 }
             });
-
             
             var percent = coreTotal > 0 ? Math.round((activeCore / coreTotal) * 100) : 100;
             $('#active-count').text(activeCore);
@@ -616,7 +499,7 @@ jQuery(function($) {
             var toast = $(
                 '<div class="lfp-toast ' + type + '">' +
                 '<span>' + (icons[type] || '') + '</span>' +
-                '<span>' + message + '</span>' +
+                '<span>' + this.escapeHtml(message) + '</span>' +
                 '<button class="lfp-toast-close">&times;</button>' +
                 '</div>'
             );

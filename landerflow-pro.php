@@ -2,7 +2,7 @@
 /**
  * Plugin Name: LanderFlow Pro 1.0.2
  * Plugin URI: https://github.com/DevWithEasy/landerflow-pro
- * Description: Professional plugin installer - Install free & premium plugins from external source
+ * Description: Professional plugin installer - Install verified free plugins from WordPress.org
  * Version: 1.0.2
  * Author: Robiul Awal
  * Author URI: https://github.com/DevWithEasy
@@ -14,14 +14,11 @@ if (!defined('ABSPATH')) exit;
 define('LANDERFLOW_PRO_VERSION', '1.0.2');
 define('LANDERFLOW_PRO_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('LANDERFLOW_PRO_PLUGIN_URL', plugin_dir_url(__FILE__));
-require_once LANDERFLOW_PRO_PLUGIN_DIR . 'includes/class-plugin-installer.php';
-
 if (!class_exists('LanderFlow_Pro')) {
     class LanderFlow_Pro {
         private static $instance;
         private $core_slugs = ['woocommerce', 'elementor', 'cartflows'];
         private $free_plugins_json_url = 'https://raw.githubusercontent.com/DevWithEasy/landerflow-pro/v1.0.1/free-plugins.json';
-        private $premium_plugins_json_url = 'https://raw.githubusercontent.com/DevWithEasy/landerflow-pro/v1.0.1/premium-plugins.json';
 
         public static function get_instance() { return self::$instance ?: self::$instance = new self(); }
         
@@ -30,10 +27,8 @@ if (!class_exists('LanderFlow_Pro')) {
             add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
             add_action('wp_ajax_lf_install', [$this, 'ajax_install']);
             add_action('wp_ajax_lf_activate', [$this, 'ajax_activate']);
-            add_action('wp_ajax_lf_premium_install', [$this, 'ajax_premium_install']);
             add_action('wp_ajax_lf_get_all_status', [$this, 'ajax_get_all_status']);
             add_action('wp_ajax_lf_get_free_plugins', [$this, 'ajax_get_free_plugins']);
-            add_action('wp_ajax_lf_get_premium_plugins', [$this, 'ajax_get_premium_plugins']);
             add_action('activated_plugin', [$this, 'auto_trigger']);
         }
 
@@ -58,71 +53,123 @@ if (!class_exists('LanderFlow_Pro')) {
             if (plugin_basename(__FILE__) === $plugin) update_option('lf_auto_trigger', true); 
         }
 
-        private function add_status_to_plugins(&$plugins, $file_key = 'file') {
+        private function get_plugins_list() {
             if (!function_exists('get_plugins')) require_once ABSPATH . 'wp-admin/includes/plugin.php';
-            foreach ($plugins as &$p) {
-                $file = $p[$file_key] ?? '';
-                $p['active'] = $file ? is_plugin_active($file) : false;
-                $p['installed'] = $file ? $this->is_installed($file) : false;
+            return get_plugins();
+        }
+
+        private function get_allowed_plugins() {
+            static $allowed = null;
+            if (null !== $allowed) return $allowed;
+            $allowed = $this->get_fallback_free_plugins();
+            $json_path = LANDERFLOW_PRO_PLUGIN_DIR . 'free-plugins.json';
+            if (file_exists($json_path)) {
+                $decoded = json_decode((string) file_get_contents($json_path), true);
+                if (is_array($decoded)) {
+                    $allowed = array_merge($allowed, $decoded);
+                }
             }
+            $filtered = [];
+            foreach ($allowed as $p) {
+                if (!is_array($p)) continue;
+                $slug = isset($p['slug']) && is_string($p['slug']) ? $p['slug'] : '';
+                $file = isset($p['file']) && is_string($p['file']) ? $p['file'] : '';
+                if ('' === $slug || '' === $file) continue;
+                $key = $slug . '|' . $file;
+                if (isset($filtered[$key])) continue;
+                $filtered[$key] = [
+                    'id'       => isset($p['id']) && is_string($p['id']) && '' !== $p['id'] ? $p['id'] : $slug,
+                    'slug'     => $slug,
+                    'file'     => $file,
+                    'name'     => isset($p['name']) && is_string($p['name']) ? $p['name'] : $slug,
+                    'desc'     => isset($p['desc']) && is_string($p['desc']) ? $p['desc'] : '',
+                    'icon'     => isset($p['icon']) && is_string($p['icon']) ? $p['icon'] : '📦',
+                    'required' => !empty($p['required']),
+                ];
+            }
+            $allowed = array_values($filtered);
+            return $allowed;
+        }
+
+        private function get_allowed_slugs() {
+            return array_column($this->get_allowed_plugins(), 'slug');
+        }
+
+        private function get_allowed_files() {
+            return array_column($this->get_allowed_plugins(), 'file');
+        }
+
+        private function sanitize_catalog($catalog) {
+            if (!is_array($catalog)) return [];
+            $by_file = [];
+            foreach ($catalog as $p) {
+                if (!is_array($p)) continue;
+                $file = isset($p['file']) && is_string($p['file']) ? $p['file'] : '';
+                if ('' !== $file) $by_file[$file] = $p;
+            }
+            $result = [];
+            foreach ($this->get_allowed_plugins() as $entry) {
+                $meta = isset($by_file[$entry['file']]) ? $by_file[$entry['file']] : [];
+                $result[] = [
+                    'id'       => $entry['id'],
+                    'slug'     => $entry['slug'],
+                    'file'     => $entry['file'],
+                    'name'     => isset($meta['name']) && is_string($meta['name']) && '' !== $meta['name'] ? $meta['name'] : $entry['name'],
+                    'desc'     => isset($meta['desc']) && is_string($meta['desc']) ? $meta['desc'] : $entry['desc'],
+                    'icon'     => isset($meta['icon']) && is_string($meta['icon']) ? $meta['icon'] : $entry['icon'],
+                    'required' => $entry['required'] || !empty($meta['required']),
+                ];
+            }
+            return $result;
+        }
+
+        private function add_status_to_plugins(&$plugins, $file_key = 'file') {
+            if (!is_array($plugins)) return;
+            $plugins_list = $this->get_plugins_list();
+            foreach ($plugins as &$p) {
+                if (!is_array($p)) continue;
+                $file = isset($p[$file_key]) && is_string($p[$file_key]) ? $p[$file_key] : '';
+                $p['active'] = $file ? is_plugin_active($file) : false;
+                $p['installed'] = $file ? isset($plugins_list[$file]) : false;
+            }
+            unset($p);
         }
 
         public function ajax_get_free_plugins() {
             check_ajax_referer('lf_nonce', 'nonce');
-            $cache_key = 'lf_free_plugins_cache'; 
-            $cached = get_transient($cache_key);
-            if ($cached !== false) { 
-                $this->add_status_to_plugins($cached, 'file');
-                wp_send_json_success(['plugins' => $cached, 'source' => 'cache']); 
+            if (!current_user_can('install_plugins')) wp_send_json_error('Permission denied');
+            $cache_key = 'lf_free_plugins_cache';
+            $plugins = get_transient($cache_key);
+            if (is_array($plugins) && $plugins) {
+                $plugins = $this->sanitize_catalog($plugins);
+                $source = 'cache';
+            } else {
+                $plugins = null;
+                $response = wp_remote_get($this->free_plugins_json_url, ['timeout' => 30, 'sslverify' => true]);
+                if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+                    $decoded = json_decode(wp_remote_retrieve_body($response), true);
+                    if (is_array($decoded)) $plugins = $decoded;
+                }
+                $plugins = $this->sanitize_catalog($plugins);
+                $source = 'live';
+                if (!$plugins) {
+                    $plugins = $this->sanitize_catalog([]);
+                    $source = 'fallback';
+                }
+                set_transient($cache_key, $plugins, HOUR_IN_SECONDS);
             }
-            $response = wp_remote_get($this->free_plugins_json_url, ['timeout' => 30, 'sslverify' => false]);
-            if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) { 
-                $plugins = $this->get_fallback_free_plugins();
-                $this->add_status_to_plugins($plugins, 'file');
-                wp_send_json_success(['plugins' => $plugins, 'source' => 'fallback']); 
-            }
-            $plugins = json_decode(wp_remote_retrieve_body($response), true);
-            if (!is_array($plugins)) { 
-                $plugins = $this->get_fallback_free_plugins();
-                $this->add_status_to_plugins($plugins, 'file');
-                wp_send_json_success(['plugins' => $plugins, 'source' => 'fallback']); 
-            }
-            set_transient($cache_key, $plugins, HOUR_IN_SECONDS);
             $this->add_status_to_plugins($plugins, 'file');
-            wp_send_json_success(['plugins' => $plugins, 'source' => 'live']);
-        }
-
-        public function ajax_get_premium_plugins() {
-            check_ajax_referer('lf_nonce', 'nonce');
-            $cache_key = 'lf_premium_plugins_cache'; 
-            $cached = get_transient($cache_key);
-            if ($cached !== false) { 
-                $this->add_status_to_plugins($cached, 'plugin_file');
-                wp_send_json_success(['plugins' => $cached, 'source' => 'cache']); 
-            }
-            $response = wp_remote_get($this->premium_plugins_json_url, ['timeout' => 30, 'sslverify' => false]);
-            if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) { 
-                $plugins = $this->get_fallback_premium_plugins();
-                $this->add_status_to_plugins($plugins, 'plugin_file');
-                wp_send_json_success(['plugins' => $plugins, 'source' => 'fallback']); 
-            }
-            $plugins = json_decode(wp_remote_retrieve_body($response), true);
-            if (!is_array($plugins)) { 
-                $plugins = $this->get_fallback_premium_plugins();
-                $this->add_status_to_plugins($plugins, 'plugin_file');
-                wp_send_json_success(['plugins' => $plugins, 'source' => 'fallback']); 
-            }
-            set_transient($cache_key, $plugins, HOUR_IN_SECONDS);
-            $this->add_status_to_plugins($plugins, 'plugin_file');
-            wp_send_json_success(['plugins' => $plugins, 'source' => 'live']);
+            wp_send_json_success(['plugins' => $plugins, 'source' => $source]);
         }
 
         public function ajax_install() {
             check_ajax_referer('lf_nonce', 'nonce');
             if (!current_user_can('install_plugins')) wp_send_json_error('Permission denied');
-            $slug = sanitize_text_field($_POST['slug']); 
-            $file = sanitize_text_field($_POST['file'] ?? '');
+            $slug = isset($_POST['slug']) ? sanitize_text_field(wp_unslash($_POST['slug'])) : '';
+            $file = isset($_POST['file']) ? sanitize_text_field(wp_unslash($_POST['file'])) : '';
             if (!$file) wp_send_json_error('No plugin file'); 
+            if (!in_array($slug, $this->get_allowed_slugs(), true)) wp_send_json_error('Plugin is not in the allowed list');
+            if (!in_array($file, $this->get_allowed_files(), true)) wp_send_json_error('Plugin file is not in the allowed list');
             if ($this->is_installed($file)) wp_send_json_success();
             require_once ABSPATH . 'wp-admin/includes/plugin-install.php'; 
             require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
@@ -131,19 +178,26 @@ if (!class_exists('LanderFlow_Pro')) {
             require_once ABSPATH . 'wp-admin/includes/file.php'; 
             WP_Filesystem();
             $api = plugins_api('plugin_information', ['slug' => $slug, 'fields' => ['sections' => false]]);
-            if (is_wp_error($api)) wp_send_json_error($api->get_error_message());
+            if (is_wp_error($api)) {
+                error_log('LanderFlow: plugins_api failed for "' . $slug . '": ' . $api->get_error_message());
+                wp_send_json_error('Plugin information could not be retrieved from WordPress.org.');
+            }
             $skin = new WP_Ajax_Upgrader_Skin(); 
             $upgrader = new Plugin_Upgrader($skin);
             $result = $upgrader->install($api->download_link);
-            if (is_wp_error($result)) wp_send_json_error($result->get_error_message()); 
+            if (is_wp_error($result)) {
+                error_log('LanderFlow: install failed for "' . $slug . '": ' . $result->get_error_message());
+                wp_send_json_error('Plugin installation failed. Please try again.');
+            } 
             wp_send_json_success();
         }
 
         public function ajax_activate() {
             check_ajax_referer('lf_nonce', 'nonce');
             if (!current_user_can('activate_plugins')) wp_send_json_error('Permission denied');
-            $file = sanitize_text_field($_POST['file'] ?? ''); 
+            $file = isset($_POST['file']) ? sanitize_text_field(wp_unslash($_POST['file'])) : '';
             if (!$file) wp_send_json_error('No plugin file');
+            if (!in_array($file, $this->get_allowed_files(), true)) wp_send_json_error('Plugin file is not in the allowed list');
             if (is_plugin_active($file)) wp_send_json_success();
             if (!function_exists('activate_plugin')) require_once ABSPATH . 'wp-admin/includes/plugin.php';
             $result = activate_plugin($file); 
@@ -153,68 +207,24 @@ if (!class_exists('LanderFlow_Pro')) {
 
         public function ajax_get_all_status() {
             check_ajax_referer('lf_nonce', 'nonce');
-            if (!function_exists('get_plugins')) require_once ABSPATH . 'wp-admin/includes/plugin.php';
-            $free_plugins = get_transient('lf_free_plugins_cache') ?: $this->get_fallback_free_plugins();
-            $premium_plugins = get_transient('lf_premium_plugins_cache') ?: $this->get_fallback_premium_plugins();
-            $status = ['free' => [], 'premium' => []];
-            foreach ($free_plugins as $p) { 
-                $file = $p['file'] ?? ''; 
-                $status['free'][$p['id'] ?? $p['slug']] = [
-                    'name' => $p['name'], 
-                    'installed' => $this->is_installed($file), 
-                    'active' => is_plugin_active($file),
-                    'required' => $p['required'] ?? false
-                ]; 
-            }
-            foreach ($premium_plugins as $p) { 
-                $file = $p['plugin_file'] ?? ''; 
-                $status['premium'][$p['id']] = [
-                    'name' => $p['name'], 
-                    'installed' => $this->is_installed($file), 
-                    'active' => is_plugin_active($file),
-                    'required' => $p['required'] ?? false
-                ]; 
+            if (!current_user_can('install_plugins')) wp_send_json_error('Permission denied');
+            $free_plugins = get_transient('lf_free_plugins_cache');
+            if (!is_array($free_plugins)) $free_plugins = $this->get_allowed_plugins();
+            $plugins_list = $this->get_plugins_list();
+            $status = ['free' => []];
+            foreach ($free_plugins as $p) {
+                if (!is_array($p)) continue;
+                $file = isset($p['file']) && is_string($p['file']) ? $p['file'] : '';
+                $key = isset($p['id']) && is_string($p['id']) && '' !== $p['id'] ? $p['id'] : (isset($p['slug']) ? (string) $p['slug'] : '');
+                if (!$key) continue;
+                $status['free'][$key] = [
+                    'name' => isset($p['name']) && is_string($p['name']) ? $p['name'] : $key,
+                    'installed' => $file ? isset($plugins_list[$file]) : false,
+                    'active' => $file ? is_plugin_active($file) : false,
+                    'required' => !empty($p['required'])
+                ];
             }
             wp_send_json_success($status);
-        }
-
-        public function ajax_premium_install() {
-            check_ajax_referer('lf_nonce', 'nonce');
-            if (!current_user_can('install_plugins')) wp_send_json_error('Permission denied');
-            $plugin_id = sanitize_text_field($_POST['plugin_id']); 
-            $zip_url = esc_url_raw($_POST['zip_url'] ?? '');
-            $plugin_file = sanitize_text_field($_POST['plugin_file'] ?? ''); 
-            $plugin_name = sanitize_text_field($_POST['plugin_name'] ?? 'Premium Plugin');
-            if (empty($zip_url)) wp_send_json_error('No download URL'); 
-            if ($this->is_installed($plugin_file)) wp_send_json_success(['message' => 'Already installed']);
-            $zip_file = $this->download_from_cdn($zip_url, $plugin_id); 
-            if (is_wp_error($zip_file)) wp_send_json_error($zip_file->get_error_message());
-            $result = LanderFlow_Plugin_Installer::install_from_zip($zip_file, $plugin_name); 
-            @unlink($zip_file);
-            if (is_wp_error($result)) wp_send_json_error($result->get_error_message()); 
-            wp_send_json_success(['message' => $plugin_name . ' installed!']);
-        }
-
-        private function download_from_cdn($zip_url, $id) {
-            $temp_dir = LANDERFLOW_PRO_PLUGIN_DIR . 'temp/'; 
-            if (!file_exists($temp_dir)) wp_mkdir_p($temp_dir);
-            $temp_file = $temp_dir . sanitize_file_name($id . '-' . time() . '.zip');
-            $response = wp_remote_get($zip_url, [
-                'timeout' => 600, 
-                'sslverify' => false, 
-                'stream' => true, 
-                'filename' => $temp_file
-            ]);
-            if (is_wp_error($response)) { @unlink($temp_file); return $response; }
-            if (wp_remote_retrieve_response_code($response) !== 200) { 
-                @unlink($temp_file); 
-                return new WP_Error('http_error', 'Download failed'); 
-            }
-            if (!file_exists($temp_file) || filesize($temp_file) < 500) { 
-                @unlink($temp_file); 
-                return new WP_Error('empty_file', 'Corrupted'); 
-            }
-            return $temp_file;
         }
 
         private function get_fallback_free_plugins() { return [
@@ -226,24 +236,18 @@ if (!class_exists('LanderFlow_Pro')) {
             ['id' => 'code-snippets', 'slug' => 'code-snippets', 'name' => 'Code Snippets', 'file' => 'code-snippets/code-snippets.php', 'icon' => '💻', 'desc' => 'Add custom code snippets easily', 'required' => false],
         ]; }
 
-        private function get_fallback_premium_plugins() { return [
-            ['id' => 'elementor-pro', 'name' => 'Elementor Pro', 'desc' => 'Advanced page builder with premium widgets', 'icon' => '🎨', 'zip_url' => 'https://github.com/DevWithEasy/landerflow-pro/releases/download/preium_plugin/elementor-pro.zip', 'plugin_file' => 'elementor-pro/elementor-pro.php', 'category' => 'Page Builder', 'version' => '3.18.0', 'required' => true],
-            ['id' => 'cartflows-pro', 'name' => 'CartFlows Pro', 'desc' => 'Premium sales funnel builder', 'icon' => '🛒', 'zip_url' => 'https://github.com/DevWithEasy/landerflow-pro/releases/download/preium_plugin/cartflows-pro.zip', 'plugin_file' => 'cartflows-pro/cartflows-pro.php', 'category' => 'Funnel', 'version' => '2.0.0', 'required' => true],
-            ['id' => 'pro-elements', 'name' => 'Pro Elements', 'desc' => 'Free Elementor Pro alternative', 'icon' => '⚡', 'zip_url' => 'https://github.com/DevWithEasy/landerflow-pro/releases/download/preium_plugin/pro-elements.zip', 'plugin_file' => 'pro-elements/pro-elements.php', 'category' => 'Page Builder', 'version' => 'latest', 'required' => false],
-            ['id' => 'pixelyoursite-pro', 'name' => 'PixelYourSite Pro', 'desc' => 'Advanced Facebook Pixel & tracking', 'icon' => '📊', 'zip_url' => 'https://github.com/DevWithEasy/landerflow-pro/releases/download/preium_plugin/pixelyoursite-pro.zip', 'plugin_file' => 'pixelyoursite-pro/pixelyoursite-pro.php', 'category' => 'Marketing', 'version' => 'latest', 'required' => false],
-        ]; }
-
         private function is_installed($file) { 
-            if (!function_exists('get_plugins')) require_once ABSPATH . 'wp-admin/includes/plugin.php'; 
-            return isset(get_plugins()[$file]); 
+            if (!is_string($file) || '' === $file) return false; 
+            return isset($this->get_plugins_list()[$file]); 
         }
 
         public function render_page() {
             $auto = get_option('lf_auto_trigger', false); 
             if ($auto) delete_option('lf_auto_trigger'); 
             $core_count = count($this->core_slugs);
+            $total_count = count($this->get_allowed_plugins());
             ?>
-            <div class="lfp-wrap <?php echo $auto ? 'auto-install' : ''; ?>" id="lfp-app">
+            <div class="lfp-wrap <?php echo esc_attr($auto ? 'auto-install' : ''); ?>" id="lfp-app">
                 <!-- Top Bar -->
                 <div class="lfp-top-bar">
                     <div class="lfp-header">
@@ -261,14 +265,14 @@ if (!class_exists('LanderFlow_Pro')) {
                             </div>
                         </div>
                         <div class="lfp-meta">
-                            <div class="lfp-badge">v<?php echo LANDERFLOW_PRO_VERSION; ?></div>
+                            <div class="lfp-badge">v<?php echo esc_html(LANDERFLOW_PRO_VERSION); ?></div>
                         </div>
                     </div>
                     <div class="lfp-dash-stats">
                         <div class="lfp-stat-card">
                             <span class="lfp-stat-card-icon">📦</span>
                             <div class="lfp-stat-card-body">
-                                <span class="lfp-stat-card-value" id="lfp-total-plugins"><?php echo $core_count + 4; ?></span>
+                                <span class="lfp-stat-card-value" id="lfp-total-plugins"><?php echo esc_html($total_count); ?></span>
                                 <span class="lfp-stat-card-label">Plugins</span>
                             </div>
                         </div>
@@ -282,15 +286,8 @@ if (!class_exists('LanderFlow_Pro')) {
                         <div class="lfp-stat-card">
                             <span class="lfp-stat-card-icon">⚠️</span>
                             <div class="lfp-stat-card-body">
-                                <span class="lfp-stat-card-value"><?php echo $core_count; ?></span>
+                                <span class="lfp-stat-card-value"><?php echo esc_html($core_count); ?></span>
                                 <span class="lfp-stat-card-label">Required</span>
-                            </div>
-                        </div>
-                        <div class="lfp-stat-card">
-                            <span class="lfp-stat-card-icon">💎</span>
-                            <div class="lfp-stat-card-body">
-                                <span class="lfp-stat-card-value">4</span>
-                                <span class="lfp-stat-card-label">Premium</span>
                             </div>
                         </div>
                     </div>
@@ -345,28 +342,6 @@ if (!class_exists('LanderFlow_Pro')) {
                                 <span>⬇</span> Install Selected (<span id="free-count">0</span>)
                             </button>
                             <button id="refresh-free" class="lfp-btn ghost">
-                                <span>↻</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="lfp-col">
-                        <div class="lfp-section premium">
-                            <div class="lfp-section-header">
-                                <h2>💎 Premium Plugins</h2>
-                                <span class="lfp-section-badge premium">CDN</span>
-                            </div>
-                            <p id="premium-source" class="lfp-source-info">Loading premium plugins...</p>
-                            <div id="premium-plugins" class="lfp-plugin-list">
-                                <div class="lfp-skeleton">Loading premium plugins...</div>
-                            </div>
-                        </div>
-
-                        <div class="lfp-actions-bar">
-                            <button id="install-selected-premium" class="lfp-btn primary" disabled>
-                                <span>⬇</span> Install Selected (<span id="premium-count">0</span>)
-                            </button>
-                            <button id="refresh-premium" class="lfp-btn ghost">
                                 <span>↻</span>
                             </button>
                         </div>
